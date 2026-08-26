@@ -39,6 +39,31 @@ public:
     void   previousSong();
     void   pauseSong();
 
+    // ---- added for the CrowPanel rotary port -------------------------------
+    // The ThingPulse remote was touch-only, so upstream has no volume control
+    // and no resume — pauseSong() only ever paused.
+
+    /// Toggles play/pause against the live player. Returns the state it moved
+    /// to, so the caller can update the UI without waiting for a refresh.
+    bool   togglePlayPause();
+
+    /// Nudges volume by a signed step and returns the resulting percentage.
+    ///
+    /// Applies to a local shadow immediately and pushes to Spotify on a short
+    /// debounce (see commitPendingVolume). A knob emits detents far faster than
+    /// the Web API will accept writes, so sending one request per detent gets
+    /// the device rate-limited within a single flick.
+    int    nudgeVolume(int delta);
+
+    /// Current volume shadow, 0-100. -1 until seeded from the API.
+    int    getVolume() const { return _volumePercent; }
+
+    /// Pushes a debounced volume change if one is due. Call from the UI loop.
+    void   commitPendingVolume();
+
+    /// Seeds the volume shadow from the active device. Safe to call repeatedly.
+    void   refreshVolumeFromDevice();
+
     // status
     bool   isMusicAvailable();
 
@@ -64,6 +89,12 @@ private:
     TaskHandle_t        _refreshTaskHandle;
     String              _spotifyClientId;
     String              _spotifyClientSecret;
+
+    // ---- volume shadow (CrowPanel rotary port) -----------------------------
+    int                 _volumePercent      = -1;     // -1 = not yet seeded
+    int                 _pendingVolume      = -1;     // -1 = nothing to push
+    uint32_t            _volumeDirtyAtMs    = 0;
+    static constexpr uint32_t VOLUME_DEBOUNCE_MS = 400;
 
     // Methods
 

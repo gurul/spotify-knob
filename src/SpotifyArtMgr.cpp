@@ -21,6 +21,12 @@
 #include "Monitor.h"
 #include "SCFileIO.h"
 #include <LittleFS.h>
+// ESP32 Arduino core 3.x renamed the underlying class to NetworkClientSecure
+// and reaches these names only through this header, which the 2.x build
+// happened to pull in transitively.
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <WiFiClientSecure.h>
 
 /*
 ** ===================================================================

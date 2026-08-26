@@ -790,3 +790,161 @@ void SpotifyPlayer::refreshCurrentSongTask(void *pvParameters)
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
+
+/*
+** ===================================================================
+** CrowPanel rotary port — volume and play/pause
+**
+**    The ThingPulse remote was touch-only: it could skip and pause,
+**    but never resume and never set volume. A knob needs both.
+** ===================================================================
+*/
+
+/*
+** ===================================================================
+** togglePlayPause()
+**
+**    Flips the transport and returns the state it moved to, so the UI
+**    can repaint immediately instead of waiting for the next refresh.
+** ===================================================================
+*/
+bool SpotifyPlayer::togglePlayPause()
+{
+    const bool wantPlaying = !_currentlyPlayingMetadataDTO.isPlaying;
+
+    postScuiMessage(SCUIMessageType::UM_STATUS_BOX,
+                    "Making Call",
+                    static_cast<int>(TFTColor::SC_NetworkInProgress));
+
+    bool ok = false;
+    if (xSemaphoreTake(_xSemaphoreNetwork, portMAX_DELAY))
+    {
+        ok = wantPlaying ? spotify.play() : spotify.pause();
+        xSemaphoreGive(_xSemaphoreNetwork);
+    }
+
+    postScuiMessage(SCUIMessageType::UM_STATUS_BOX,
+                    "",
+                    static_cast<int>(ok ? TFTColor::SC_NetworkSuccess
+                                        : TFTColor::SC_NetworkFailure));
+
+    if (ok)
+    {
+        // Reflect it locally so the icon flips now. The next refresh will
+        // reconcile if something else changed the player meanwhile.
+        if (xSemaphoreTake(_xSemaphoreDataCopy, portMAX_DELAY))
+        {
+            _currentlyPlayingMetadataDTO.isPlaying = wantPlaying;
+            _currentlyPlayingMetadata.isPlaying    = wantPlaying;
+            xSemaphoreGive(_xSemaphoreDataCopy);
+        }
+        _isPlaying = wantPlaying;
+    }
+
+    spLogI(LOGTAG_PLAYER, "TRANSPORT toggle -> %s (%s)",
+           wantPlaying ? "play" : "pause", ok ? "ok" : "FAILED");
+
+    return wantPlaying;
+}
+
+/*
+** ===================================================================
+** refreshVolumeFromDevice()
+**
+**    Seeds the volume shadow from whichever device is active. Spotify
+**    reports volume on the device, not on the track, so this is a
+**    separate call from the now-playing refresh.
+** ===================================================================
+*/
+void SpotifyPlayer::refreshVolumeFromDevice()
+{
+    if (xSemaphoreTake(_xSemaphoreNetwork, portMAX_DELAY))
+    {
+        spotify.getPlayerDetails([](PlayerDetails details) {
+            const int v = details.device.volumePercent;
+            if (v >= 0 && v <= 100)
+            {
+                SpotifyPlayer::getInstance()._volumePercent = v;
+                spLogI(LOGTAG_PLAYER, "VOLUME seeded=%d device=%s", v,
+                       details.device.name ? details.device.name : "?");
+            }
+        });
+        xSemaphoreGive(_xSemaphoreNetwork);
+    }
+}
+
+/*
+** ===================================================================
+** nudgeVolume()
+**
+**    Moves the local shadow immediately and marks it for a debounced
+**    push. Returns the new percentage so the caller can repaint at
+**    once — waiting on the network here would make the knob feel dead.
+** ===================================================================
+*/
+int SpotifyPlayer::nudgeVolume(int delta)
+{
+    if (_volumePercent < 0)
+    {
+        // Not seeded yet. Start from a sane midpoint rather than blocking the
+        // knob on a network round trip.
+        _volumePercent = 50;
+    }
+
+    int next = _volumePercent + delta;
+    if (next < 0)   next = 0;
+    if (next > 100) next = 100;
+
+    if (next != _volumePercent)
+    {
+        _volumePercent   = next;
+        _pendingVolume   = next;
+        _volumeDirtyAtMs = millis();
+    }
+
+    return _volumePercent;
+}
+
+/*
+** ===================================================================
+** commitPendingVolume()
+**
+**    Pushes a pending volume once the knob has been still long enough.
+**    One API write per detent would rate-limit the account within a
+**    single flick of the wheel, so only the settled value is sent.
+** ===================================================================
+*/
+void SpotifyPlayer::commitPendingVolume()
+{
+    if (_pendingVolume < 0)
+    {
+        return;
+    }
+
+    if ((millis() - _volumeDirtyAtMs) < VOLUME_DEBOUNCE_MS)
+    {
+        return;
+    }
+
+    const int target = _pendingVolume;
+    _pendingVolume   = -1;   // cleared before the call, so a failure does not
+                             // spin retrying the same value forever
+
+    postScuiMessage(SCUIMessageType::UM_STATUS_BOX,
+                    "Making Call",
+                    static_cast<int>(TFTColor::SC_NetworkInProgress));
+
+    bool ok = false;
+    if (xSemaphoreTake(_xSemaphoreNetwork, portMAX_DELAY))
+    {
+        ok = spotify.setVolume(target);
+        xSemaphoreGive(_xSemaphoreNetwork);
+    }
+
+    postScuiMessage(SCUIMessageType::UM_STATUS_BOX,
+                    "",
+                    static_cast<int>(ok ? TFTColor::SC_NetworkSuccess
+                                        : TFTColor::SC_NetworkFailure));
+
+    spLogI(LOGTAG_PLAYER, "VOLUME set=%d (%s)", target, ok ? "ok" : "FAILED");
+}

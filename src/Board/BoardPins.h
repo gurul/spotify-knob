@@ -29,14 +29,15 @@
 static constexpr int16_t PANEL_WIDTH  = 480;
 static constexpr int16_t PANEL_HEIGHT = 480;
 
-// The glass is round. Anything drawn outside this inscribed circle is hidden by
-// the bezel, so every layout must stay inside it.
 static constexpr int16_t PANEL_CENTER_X = PANEL_WIDTH / 2;
 static constexpr int16_t PANEL_CENTER_Y = PANEL_HEIGHT / 2;
-static constexpr int16_t PANEL_RADIUS   = PANEL_WIDTH / 2;
+static constexpr int16_t PANEL_RADIUS   = PANEL_WIDTH / 2;   // 240
 
-// Usable radius, backed off from the bezel so antialiased edges are not clipped.
-static constexpr int16_t PANEL_SAFE_RADIUS = 228;
+// The addressable area is the full 480x480 square and the glass fills it — the
+// round look comes from the board's bezel, not from a smaller active area. So
+// layouts use the whole panel and are NOT inset. An earlier revision backed off
+// to a 228px "safe radius" and simply wasted a visible ring of screen.
+static constexpr int16_t PANEL_SAFE_RADIUS = PANEL_RADIUS;
 
 // ---------------------------------------------------------------------------
 // ST7701S RGB parallel bus

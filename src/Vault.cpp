@@ -28,6 +28,9 @@
 ** ------------------------------------------------------------------------------------------------
 */
 
+// ESP32 Arduino core 3.x no longer pulls esp_read_mac()/ESP_MAC_WIFI_STA in
+// transitively; the IDF header has to be named.
+#include <esp_mac.h>
 #include <Arduino.h>
 #include "Vault.h"
 #include "settings.h"

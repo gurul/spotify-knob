@@ -112,25 +112,27 @@ void RoundDisplay::drawTestPattern() {
     return;
   }
 
-  _gfx->fillScreen(RGB565_BLACK);
-
-  // Three colour wedges. Drawn as horizontal bands clipped to the circle so the
-  // result is unmistakably ours and unmistakably round.
+  // Bands run edge to edge across the whole 480x480, not clipped to a circle.
+  // This is also the diagnostic for how much of the panel the bezel actually
+  // shows: if the corner markers below are visible, the addressable square is
+  // fully exposed and layouts can use it.
   const uint16_t bands[3] = {RGB565_RED, RGB565_GREEN, RGB565_BLUE};
   for (int16_t y = 0; y < PANEL_HEIGHT; y++) {
-    const int32_t dy = (int32_t)y - PANEL_CENTER_Y;
-    const int32_t r2 = (int32_t)PANEL_SAFE_RADIUS * PANEL_SAFE_RADIUS - dy * dy;
-    if (r2 < 0) {
-      continue;
-    }
-    const int16_t half = (int16_t)sqrt((double)r2);
-    _gfx->drawFastHLine(PANEL_CENTER_X - half, y, half * 2, bands[(y / 60) % 3]);
+    _gfx->drawFastHLine(0, y, PANEL_WIDTH, bands[(y / 60) % 3]);
   }
 
-  // Boundary ring on the safe radius, and crosshairs. If the panel timing is
-  // wrong the ring reads as an ellipse or shears.
-  _gfx->drawCircle(PANEL_CENTER_X, PANEL_CENTER_Y, PANEL_SAFE_RADIUS, RGB565_WHITE);
-  _gfx->drawCircle(PANEL_CENTER_X, PANEL_CENTER_Y, PANEL_SAFE_RADIUS - 1, RGB565_WHITE);
+  // Corner markers. Whether these survive the bezel decides whether the UI can
+  // use the corners or must stay inside the inscribed circle.
+  const int16_t m = 28;
+  _gfx->fillRect(0, 0, m, m, RGB565_WHITE);
+  _gfx->fillRect(PANEL_WIDTH - m, 0, m, m, RGB565_WHITE);
+  _gfx->fillRect(0, PANEL_HEIGHT - m, m, m, RGB565_WHITE);
+  _gfx->fillRect(PANEL_WIDTH - m, PANEL_HEIGHT - m, m, m, RGB565_WHITE);
+
+  // Inscribed circle at the full radius, plus crosshairs. Wrong panel timing
+  // shows up here as an ellipse, a shear, or an off-centre ring.
+  _gfx->drawCircle(PANEL_CENTER_X, PANEL_CENTER_Y, PANEL_RADIUS - 1, RGB565_BLACK);
+  _gfx->drawCircle(PANEL_CENTER_X, PANEL_CENTER_Y, PANEL_RADIUS - 2, RGB565_BLACK);
   _gfx->drawFastHLine(PANEL_CENTER_X - 40, PANEL_CENTER_Y, 80, RGB565_WHITE);
   _gfx->drawFastVLine(PANEL_CENTER_X, PANEL_CENTER_Y - 40, 80, RGB565_WHITE);
 
