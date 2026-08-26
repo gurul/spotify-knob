@@ -1,0 +1,13 @@
+# Partition table for the Elecrow CrowPanel 2.1" rotary display (ESP32-S3-N16R8).
+#
+# 16MB flash, no OTA. The application gets 6MB because the round UI carries
+# smooth fonts, and LittleFS gets the remaining ~9.5MB so the album-art cache
+# can hold a large library rather than the 10-album cache the 4MB ThingPulse
+# board was limited to.
+#
+# Name,     Type, SubType,  Offset,   Size,      Flags
+nvs,        data, nvs,      0x9000,   0x5000,
+otadata,    data, ota,      0xE000,   0x2000,
+app0,       app,  factory,  0x10000,  0x600000,
+spiffs,     data, spiffs,   0x610000, 0x9C0000,
+coredump,   data, coredump, 0xFD0000, 0x30000,
