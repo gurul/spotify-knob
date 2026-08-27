@@ -9,3 +9,4 @@ data/user.ini
 
 # Host-side OAuth artefact — never commit a token
 data/refresh-token.txt
+case/export/*.FCBak
