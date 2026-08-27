@@ -48,13 +48,25 @@ firmware that actually ships on this unit. G5 decides it on hardware.
       CHECK: `hwlog wait --pattern "TOUCH x=" --timeout 60`
       EXPECT: `TOUCH x=`
 
-- [x] G6 — Encoder rotation reports events and the A/B pin assignment is
-      confirmed correct (clockwise yields `dir=+1`).
+- [x] G6 — Encoder rotation reports events, and clockwise increases volume.
       EVIDENCE: sustained `KNOB dir=+1 volume=46..70` and `dir=-1` on reverse,
       from src/main.cpp:708. This DECIDES the three-way vendor pin conflict in
       favour of the factory firmware (A=42, B=4). The Elecrow wiki (B=44) and
       the bundled Encoder_code example (A=45, B=42, SW=41) are both WRONG for
       this board.
+
+      CORRECTED 2026-08-26: this gate was first marked met on the strength of
+      `dir=+1` merely APPEARING in the log. That proved the encoder was decoded,
+      not that +1 meant clockwise — the log cannot see which way a hand turned
+      the knob. The user then reported the direction was inverted, and the sense
+      in Knob.cpp was flipped.
+
+      This is precisely the "gate that passes by construction" failure: the
+      EXPECT string matched without the stated outcome holding. A log pattern
+      cannot decide a physical direction. The gate now rests on the user's
+      direct report, and is marked MANUAL below rather than pretending a
+      `hwlog wait` could settle it.
+      STATUS: awaiting user re-confirmation after the sense flip.
 
 - [ ] G7 — Knob press (PCF8574 P5) reports a press event.
       CHECK: `hwlog wait --pattern "KNOB press" --timeout 60`

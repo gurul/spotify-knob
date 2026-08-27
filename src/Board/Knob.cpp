@@ -29,15 +29,21 @@ void IRAM_ATTR Knob::isrChannelA() {
   }
   g_lastEdgeUs = now;
 
-  // Standard quadrature decode: sample B on an A edge. B differing from A means
-  // one direction, matching means the other.
+  // Quadrature decode: sample B on an A edge. Which combination means "forward"
+  // depends on how the encoder is wired, and cannot be derived from the pin
+  // numbers — it has to be settled by turning the physical knob.
+  //
+  // Settled 2026-08-26 on hardware: with A=42/B=4 as wired on this board,
+  // (a != b) is COUNTER-clockwise. Clockwise must increase volume, so the sense
+  // is inverted here rather than by negating at the call sites, which would
+  // leave knob.position() reading backwards.
   const int a = digitalRead(ENCODER_A_PIN);
   const int b = digitalRead(ENCODER_B_PIN);
 
   if (a != b) {
-    g_position++;
-  } else {
     g_position--;
+  } else {
+    g_position++;
   }
 }
 
