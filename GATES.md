@@ -185,36 +185,49 @@ READMEs), make CI green, push this branch, and push the portfolio's main.
 Constraint honored throughout: the MIT LICENSE file and the per-file
 SPDX-FileCopyrightText notices are legally required and stay.
 
-- [ ] G20: No narrative references to the upstream project remain in README.md,
+- [x] G20: No narrative references to the upstream project remain in README.md,
       platformio.ini, include/, or src/. Only SPDX copyright-notice lines may
       mention the name. (LICENSE and GATES.md are historical/legal record, out
       of scope by design.)
       CHECK: `node -e "const fs=require('fs'),p=require('path');const roots=['README.md','platformio.ini','src','include'];let bad=[];function scan(f){const t=fs.readFileSync(f,'utf8').split('\n');t.forEach((l,i)=>{if(/thingpulse/i.test(l)&&!/SPDX-FileCopyrightText/.test(l))bad.push(f+':'+(i+1)+':'+l.trim())})}function walk(d){for(const e of fs.readdirSync(d,{withFileTypes:true})){const f=p.join(d,e.name);if(e.isDirectory())walk(f);else scan(f)}}for(const r of roots){if(!fs.existsSync(r))continue;fs.statSync(r).isDirectory()?walk(r):scan(r)}if(bad.length){console.error(bad.join('\n'));process.exit(1)}console.log('NO-NARRATIVE-REFS')"`
       EXPECT: `NO-NARRATIVE-REFS`
+      EVIDENCE: check ran 2026-08-27 via /bin/sh, printed `NO-NARRATIVE-REFS`, exit 0.
 
-- [ ] G21: The firmware still builds clean after the sweep.
+- [x] G21: The firmware still builds clean after the sweep.
       CHECK: `cd /Users/gurucharan/Documents/work/spotify-knob && /Users/gurucharan/.local/bin/pio run -e crowpanel-21-rotary 2>&1 | tail -3`
       EXPECT: `SUCCESS`
+      EVIDENCE: check ran 2026-08-27, `[SUCCESS] Took 9.89 seconds`, exit 0.
 
-- [ ] G22: The redesigned README leads with a banner image, keeps the load-bearing
+- [x] G22: The redesigned README leads with a banner image, keeps the load-bearing
       technical content (board, pinout source, build commands, OAuth flow), and
       contains no reference to the upstream project.
       CHECK: `cd /Users/gurucharan/Documents/work/spotify-knob && node -e "const t=require('fs').readFileSync('README.md','utf8');const need=['docs/thumbnail','CrowPanel','ST7701','PCF8574','crowpanel-21-rotary','get_refresh_token'];const miss=need.filter(k=>!t.includes(k));if(miss.length){console.error('MISSING: '+miss.join(', '));process.exit(1)}if(/thingpulse|upstream/i.test(t)){console.error('still references the upstream project');process.exit(1)}console.log('README-OK')"`
       EXPECT: `README-OK`
+      EVIDENCE: check ran 2026-08-27, printed `README-OK`, exit 0.
 
 - [ ] G23: The banner referenced by the README exists and is a real raster image,
       not a placeholder.
       CHECK: `cd /Users/gurucharan/Documents/work/spotify-knob && node -e "const fs=require('fs');const c=[['docs/thumbnail.jpg',[0xff,0xd8]],['docs/thumbnail.png',[0x89,0x50]]];const hit=c.find(([f])=>fs.existsSync(f));if(!hit){console.error('no thumbnail file');process.exit(1)}const[f,sig]=hit;const b=fs.readFileSync(f);if(b.length<10240||b[0]!==sig[0]||b[1]!==sig[1]){console.error('bad signature or <10KB: '+f+' '+b.length);process.exit(1)}console.log('THUMB-OK '+f)"`
       EXPECT: `THUMB-OK`
 
-- [ ] G24: This branch is pushed: the remote ref equals local HEAD.
+- [x] G24: This branch is pushed: the remote ref equals local HEAD.
       CHECK: `cd /Users/gurucharan/Documents/work/spotify-knob && node -e "const{execSync:x}=require('child_process');const h=x('git rev-parse HEAD').toString().trim();const r=x('git ls-remote origin refs/heads/feat/crowpanel-21-rotary-port').toString().trim().split(String.fromCharCode(9))[0];if(h!==r){console.error('local '+h+' != remote '+r);process.exit(1)}console.log('PUSH-OK')"`
       EXPECT: `PUSH-OK`
+      EVIDENCE: check ran 2026-08-27, printed `PUSH-OK`, exit 0 (head 2816826).
 
-- [ ] G25: CI is green on the pushed head of this branch.
+- [x] G25: CI is green on the pushed head of this branch.
       CHECK: `cd /Users/gurucharan/Documents/work/spotify-knob && node -e "const{execSync:x}=require('child_process');const h=x('git rev-parse HEAD').toString().trim();const runs=JSON.parse(x('gh run list --branch feat/crowpanel-21-rotary-port --json headSha,status,conclusion --limit 10').toString());const r=runs.find(r=>r.headSha===h);if(!r){console.error('no CI run for '+h);process.exit(1)}if(r.status!=='completed'||r.conclusion!=='success'){console.error(r.status+'/'+r.conclusion);process.exit(1)}console.log('CI-GREEN')"`
       EXPECT: `CI-GREEN`
+      EVIDENCE: check ran 2026-08-27, printed `CI-GREEN`, exit 0 — run 33047216855-era on head 2816826 after the Python 3.9→3.12 workflow fix.
 
-- [ ] G26: The portfolio's spotKnob entry is committed on main and pushed.
+- [x] G26: The portfolio's spotKnob entry is committed on main and pushed.
       CHECK: `cd /Users/gurucharan/Documents/work/portfolio && node -e "const{execSync:x}=require('child_process');if(x('git status --porcelain app/hardware/page.js').toString().trim()){console.error('uncommitted');process.exit(1)}const t=x('git show HEAD:app/hardware/page.js').toString();if(!t.includes('spotKnob')){console.error('no spotKnob at HEAD');process.exit(1)}const h=x('git rev-parse HEAD').toString().trim();const r=x('git ls-remote origin refs/heads/main').toString().trim().split(String.fromCharCode(9))[0];if(h!==r){console.error('local '+h+' != remote '+r);process.exit(1)}console.log('PORTFOLIO-OK')"`
       EXPECT: `PORTFOLIO-OK`
+      EVIDENCE: check ran 2026-08-27, printed `PORTFOLIO-OK`, exit 0 (portfolio main a1ee1c7 pushed).
+
+Note on verification method (Phase 5): the gate-check harness mis-executes
+multi-line gate blocks in this ledger (it runs the EXPECT token as a shell
+command, exit 127). Every Phase 5 check above was therefore executed directly
+with `/bin/sh -c` and judged on real exit status + output, recorded per gate.
+G23 remains open: the banner image is user-supplied (Nano Banana) and not yet
+delivered.
