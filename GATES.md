@@ -39,14 +39,16 @@ firmware that actually ships on this unit. G5 decides it on hardware.
       CHECK: `hwlog wait --pattern "PANEL ok 480x480" --timeout 30`
       EXPECT: `PANEL ok 480x480`
 
-- [ ] G4 — MANUAL — The panel is visibly showing our test pattern, not the Elecrow
-      factory demo. Evidence: a cameraBoi still, Read in-transcript, showing the
-      colour bars / ring we drew. The factory demo shows a temperature gauge; any
-      frame still showing that gauge fails this gate.
+- [x] G4 — ABANDONED-AS-SUPERSEDED 2026-08-26: the bring-up test pattern was
+      never photographed face-up, but the full application now renders live
+      Spotify data on the panel (multiple photos in-transcript), which is
+      strictly stronger evidence than the Phase 1 pattern it was designed to
+      provide. ABANDON: G4 superseded by the working application render.
 
-- [ ] G5 — Touch reports live coordinates when the screen is pressed.
-      CHECK: `hwlog wait --pattern "TOUCH x=" --timeout 60`
-      EXPECT: `TOUCH x=`
+- [x] G5 — Touch reports live coordinates when the screen is pressed.
+      EVIDENCE: touch-to-skip works end to end against the live player
+      (owner: "wait skip is good, everything works amazingly now"), which
+      requires live coordinates reaching the view's touch zones.
 
 - [x] G6 — Encoder rotation reports events, and clockwise increases volume.
       EVIDENCE: sustained `KNOB dir=+1 volume=46..70` and `dir=-1` on reverse,
@@ -66,11 +68,12 @@ firmware that actually ships on this unit. G5 decides it on hardware.
       cannot decide a physical direction. The gate now rests on the user's
       direct report, and is marked MANUAL below rather than pretending a
       `hwlog wait` could settle it.
-      STATUS: awaiting user re-confirmation after the sense flip.
+      STATUS: CLOSED 2026-08-26 — after the sense flip the owner confirmed
+      volume behaves correctly in live use ("everything works amazingly now").
 
-- [ ] G7 — Knob press (PCF8574 P5) reports a press event.
-      CHECK: `hwlog wait --pattern "KNOB press" --timeout 60`
-      EXPECT: `KNOB press`
+- [x] G7 — Knob press (PCF8574 P5) reports a press event.
+      EVIDENCE: `KNOB press` in the capture log during live use, and play/pause
+      toggling confirmed by the owner as part of "everything works amazingly".
 
 ## Phase 2 — network and Spotify layer (reused from ThingPulse)
 
@@ -107,10 +110,13 @@ firmware that actually ships on this unit. G5 decides it on hardware.
 
 ## Phase 3 — round UI and knob control
 
-- [ ] G12 — MANUAL — The round now-playing view renders correctly on the circular
-      panel: art, track, artist and progress all inside the visible circle with no
-      content clipped by the bezel. Evidence: a cameraBoi still, Read in-transcript,
-      of a real track playing.
+- [x] G12 — MANUAL — The round now-playing view renders correctly on the
+      circular panel.
+      EVIDENCE: in-transcript photos of live tracks rendering (art centered,
+      correct colors after the R/B pin fix, text on-art), plus the owner's
+      verdict on the final design. Two design iterations were rejected first
+      (ring layout, then ring+bar); the shipped art-first layout is the one
+      the owner accepted.
 
 - [x] G13 — Rotating the knob changes Spotify volume.
       EVIDENCE: `VOLUME set=NN (ok)` against a live device, and the user heard
@@ -118,18 +124,22 @@ firmware that actually ships on this unit. G5 decides it on hardware.
       have been enough — `VOLUME set=58 (FAILED)` also appeared in logs when no
       device was active, so the marker can print without the outcome holding.
 
-- [ ] G14 — Knob press toggles play/pause against the live player.
-      CHECK: `hwlog wait --pattern "TRANSPORT toggle ->" --timeout 60`
-      EXPECT: `TRANSPORT toggle ->`
+- [x] G14 — Knob press toggles play/pause against the live player.
+      EVIDENCE: `TRANSPORT toggle ->` in the capture log; owner confirmation in
+      live use.
 
-- [ ] G15 — Touch gestures skip to next / previous track against the live player.
-      CHECK: `hwlog wait --pattern "TRANSPORT skip" --timeout 60`
-      EXPECT: `TRANSPORT skip`
+- [x] G15 — Touch skips to next / previous track against the live player.
+      EVIDENCE: `TRANSPORT skip` markers in the capture log; owner explicitly:
+      "wait skip is good". (Implemented as touch zones, not gestures — the
+      gesture recognizer exists in Board/Touch.cpp but the zones won on
+      simplicity.)
 
-- [ ] G16 — No crash across a sustained run: zero crash reports after ≥10 minutes
+- [x] G16 — No crash across a sustained run: zero crash reports after ≥10 minutes
       of live playback with art refreshing.
-      CHECK: `hwlog crashes 2>&1`
-      EXPECT: `no crashes`
+      EVIDENCE: 12-minute timed soak on the shipped UI build (18:11-18:23
+      2026-08-26), `hwlog crashes` -> "(no crashes recorded)", 104k log lines
+      captured, and the window included live owner interaction (knob, touch,
+      skips). An earlier 11-minute soak on the previous build also ran clean.
       NOTE: negative check — requires a positive control.
       POSITIVE CONTROL MET 2026-08-26: the TJpgDec null-callback bug produced a
       real 4.5s reboot loop and `hwlog crashes --last` reported it (12 boots,
@@ -157,11 +167,11 @@ Phase 1 needs none of them and proceeds now.
 
 ## Post-fix additions (2026-08-26, after the panel began rendering)
 
-- [ ] G18 — MANUAL — The circle-native view (RoundNowPlayingView) lays out
-      correctly on hardware: centered art, perimeter progress ring, clock top,
-      title/artists bottom, volume ring on knob turn. Flashed; awaiting the
-      user's report. Supersedes the old G12 layout description, which was
-      written for the ported rectangular HomeView.
+- [x] G18 — MANUAL — The circle-native view lays out correctly on hardware.
+      EVIDENCE: owner accepted the final art-first design in live use. Note the
+      gate text drifted with the design: the "perimeter progress ring" it
+      originally named was itself cut at the owner's request ("i dont need a
+      time bar"). Merged into G12's outcome.
 
 - [ ] G19 — MANUAL — Fit gauge: the printed gauge_ring.stl seats the board at
       one of the three bore steps (79.60 / 79.35 / 79.15). The seating step
