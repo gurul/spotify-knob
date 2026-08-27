@@ -22,7 +22,7 @@
 #include "SpotifyPlayer.h"
 #include "logTags.h"
 #include "SCLogger.h"
-#include "ThingPulse/spotify.h"
+#include "Core/spotify.h"
 #include "Monitor.h"
 #include "SpotifyArtMgr.h"
 #include "SCFileIO.h"
@@ -85,7 +85,7 @@ void SpotifyPlayer::initialize(QueueHandle_t    *pScuiQueue)
 
     spotify.lateInit(_spotifyClientId.c_str(), _spotifyClientSecret.c_str(), _spotifyRefreshToken.c_str());
 
-    // client is defined in ThingPulse/spotify.h
+    // client is defined in Core/spotify.h
     client.setCACert(spotify_server_cert);  
     
 }
@@ -784,21 +784,22 @@ void SpotifyPlayer::refreshCurrentSongTask(void *pvParameters)
 {
     spLogI(LOGTAG_MULTITASK, "background task executing.  about to enter loop.");
 
-    // ESP32 Arduino core 3.x no longer auto-subscribes tasks to the task
-    // watchdog, so the esp_task_wdt_reset() below logged
-    //   E task_wdt: esp_task_wdt_reset(707): task not found
-    // on every loop — thousands of error lines per hour of pure noise.
-    // Subscribe once; if the WDT is not initialized the call fails harmlessly
-    // and the reset stays a no-op, same as before.
-    esp_task_wdt_add(NULL);
+    // NO task-watchdog subscription — deliberately, and learned the hard way.
+    //
+    // This loop blocks on TLS handshakes and album-art downloads that
+    // routinely exceed the watchdog window, so subscribing the task arms a
+    // panic around I/O that is merely slow, not hung:
+    //   Task watchdog got triggered -> panic -> reboot mid-frame
+    // (three crashes in minutes when it was tried; the screen "glitch" was
+    // the board rebooting). The old esp_task_wdt_reset() in the loop only
+    // ever appeared to work because the task was never subscribed and the
+    // call was a no-op with an error message. Both halves are now gone: no
+    // add, no reset — the honest form of the no-protection that always was.
 
     // TODO: work this out better so it just simply starts when ready
     vTaskDelay(pdMS_TO_TICKS(2000)); // 2000 ms delay to get started and wait for everything to process
     while (true) {
         spLogI(LOGTAG_MULTITASK, "refreshCurrentSongTask is running");
-
-        // Feed the Task Watchdog to avoid timeout
-        esp_task_wdt_reset();
 
         // Perform the task (blocking HTTP call)
         SpotifyPlayer::getInstance().refreshCurrentTrack();
@@ -818,7 +819,7 @@ void SpotifyPlayer::refreshCurrentSongTask(void *pvParameters)
 ** ===================================================================
 ** CrowPanel rotary port — volume and play/pause
 **
-**    The ThingPulse remote was touch-only: it could skip and pause,
+**    The original remote was touch-only: it could skip and pause,
 **    but never resume and never set volume. A knob needs both.
 ** ===================================================================
 */

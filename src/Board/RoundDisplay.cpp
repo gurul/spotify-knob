@@ -11,12 +11,17 @@
 RoundDisplay display;
 
 void RoundDisplay::powerOnSequence() {
-  // Reset asserted (active low) before power, so the controller never sees a
-  // clock edge while its rail is still rising.
-  expander.write(PCF_LCD_RESET, false);
-  delay(20);
+  // FORCE the panel rail off first. The PCF8574 has no reset line, so it
+  // keeps its outputs through an ESP32 warm reboot — meaning LCD power stays
+  // ON and the ST7701 never truly cold-starts. After a rapid crash-reboot
+  // storm this left the panel wedged dark while the firmware ran perfectly:
+  // the init sequence was accepted by a controller in an undefined state.
+  // Cutting the rail for 150ms makes every boot equivalent to first plug-in.
+  expander.write(PCF_LCD_RESET, false);   // reset asserted (active low)
+  expander.write(PCF_LCD_POWER, false);   // rail OFF
+  delay(150);
 
-  expander.write(PCF_LCD_POWER, true);
+  expander.write(PCF_LCD_POWER, true);    // rail up with reset held
   delay(100);
 
   expander.write(PCF_LCD_RESET, true);
