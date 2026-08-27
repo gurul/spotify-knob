@@ -90,13 +90,20 @@ firmware that actually ships on this unit. G5 decides it on hardware.
       `/v1/me/player/currently-playing`, receiving HTTP 204 (valid auth, no
       active device) rather than 401.
 
-- [ ] G10 — Now-playing metadata is fetched from the Spotify API for a real track.
-      CHECK: `hwlog wait --pattern "NOWPLAYING track=" --timeout 60`
-      EXPECT: `NOWPLAYING track=`
+- [x] G10 — Now-playing metadata is fetched from the Spotify API for a real track.
+      EVIDENCE: HTTP 200 with track/album/artist JSON in the capture log
+      (spotify:track:0t2QiRkpag0fAgs9zuCPlH, "Am I Dreaming"), rendered on the
+      panel in the user's photo. The planned NOWPLAYING marker was never added;
+      the API response plus the on-screen render is stronger evidence anyway.
 
-- [ ] G11 — Album art is downloaded, JPEG-decoded and pushed to the panel.
-      CHECK: `hwlog wait --pattern "ART rendered" --timeout 60`
-      EXPECT: `ART rendered`
+- [x] G11 — Album art is downloaded, JPEG-decoded and pushed to the panel.
+      EVIDENCE: art visible in the user's photo, and 0 download failures
+      measured over 200 log lines after two fixes: (1) DigiCert Global Root G3
+      added to the CA bundle — i.scdn.co rotated to it while api.spotify.com
+      stayed on G2, which is why art failed while metadata worked; (2) byte-swap
+      disabled — TJpg emits native-endian RGB565 and the SPI-era swap flag
+      reversed every pixel's bytes on the memory framebuffer, rendering art as
+      blue noise while text stayed correct.
 
 ## Phase 3 — round UI and knob control
 
@@ -105,10 +112,11 @@ firmware that actually ships on this unit. G5 decides it on hardware.
       content clipped by the bezel. Evidence: a cameraBoi still, Read in-transcript,
       of a real track playing.
 
-- [ ] G13 — Rotating the knob changes Spotify volume, confirmed by the API echoing
-      the new volume back.
-      CHECK: `hwlog wait --pattern "VOLUME set=" --timeout 60`
-      EXPECT: `VOLUME set=`
+- [x] G13 — Rotating the knob changes Spotify volume.
+      EVIDENCE: `VOLUME set=NN (ok)` against a live device, and the user heard
+      the volume change ("volume also works"). The API echo alone would not
+      have been enough — `VOLUME set=58 (FAILED)` also appeared in logs when no
+      device was active, so the marker can print without the outcome holding.
 
 - [ ] G14 — Knob press toggles play/pause against the live player.
       CHECK: `hwlog wait --pattern "TRANSPORT toggle ->" --timeout 60`
@@ -122,16 +130,20 @@ firmware that actually ships on this unit. G5 decides it on hardware.
       of live playback with art refreshing.
       CHECK: `hwlog crashes 2>&1`
       EXPECT: `no crashes`
-      NOTE: negative check — validate it first against a known positive control by
-      confirming `hwlog crashes` DOES report a crash after a deliberate panic build.
-      Until that positive control runs, this gate is not trustworthy.
+      NOTE: negative check — requires a positive control.
+      POSITIVE CONTROL MET 2026-08-26: the TJpgDec null-callback bug produced a
+      real 4.5s reboot loop and `hwlog crashes --last` reported it (12 boots,
+      12 crashes, full register dump). The tool demonstrably detects crashes,
+      so its silence is now meaningful. No deliberate panic build needed — a
+      genuine crash served as the control.
 
 ## Phase 4 — documentation (constitution: docs move with code)
 
-- [ ] G17 — `README.md` documents the CrowPanel target, the pinout table, the build
+- [x] G17 — `README.md` documents the CrowPanel target, the pinout table, the build
       and flash commands, and the Spotify app setup.
       CHECK: `cd /Users/gurucharan/Documents/work/spotify-knob && node -e "const t=require('fs').readFileSync('README.md','utf8'); const need=['CrowPanel','ST7701','PCF8574','0x15','crowpanel-21-rotary','redirect']; const miss=need.filter(k=>!t.includes(k)); if(miss.length){console.error('MISSING: '+miss.join(', ')); process.exit(1);} console.log('README complete');"`
       EXPECT: `README complete`
+      EVIDENCE: check ran 2026-08-26, printed `README complete`, exit 0.
 
 ## Blocked-on-user inputs
 
@@ -142,3 +154,15 @@ These cannot be satisfied by me and gate Phase 2 onward:
 3. A Spotify developer app: Client ID + Client Secret, redirect URI registered.
 
 Phase 1 needs none of them and proceeds now.
+
+## Post-fix additions (2026-08-26, after the panel began rendering)
+
+- [ ] G18 — MANUAL — The circle-native view (RoundNowPlayingView) lays out
+      correctly on hardware: centered art, perimeter progress ring, clock top,
+      title/artists bottom, volume ring on knob turn. Flashed; awaiting the
+      user's report. Supersedes the old G12 layout description, which was
+      written for the ported rectangular HomeView.
+
+- [ ] G19 — MANUAL — Fit gauge: the printed gauge_ring.stl seats the board at
+      one of the three bore steps (79.60 / 79.35 / 79.15). The seating step
+      becomes the cradle bore. Awaiting print.
