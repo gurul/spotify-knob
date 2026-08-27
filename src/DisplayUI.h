@@ -169,6 +169,21 @@ public:
     void fillArc(int32_t x, int32_t y, int32_t r1, int32_t r2,
                  float startDeg, float endDeg, TFTColor color);
 
+    // CrowPanel port: 50% darken of a framebuffer region in place (RGB565
+    // half-intensity mask). This is what puts legible text on album art
+    // without alpha blending support. Thread-safe.
+    void dimRect(int32_t x, int32_t y, int32_t w, int32_t h);
+
+    // CrowPanel port: filled circle, for the progress ring's endpoint dot.
+    void fillCircleAt(int32_t x, int32_t y, int32_t r, TFTColor color);
+
+    // CrowPanel port: centered text with NO clearing rect. cDrawString clears
+    // the full width of its row, which on the round UI stamps black gaps into
+    // the perimeter ring wherever a text row crosses it, and would erase the
+    // art under on-art text. Callers clear their own (narrow) region first.
+    void drawStringNoClear(const char *str, int32_t x, int32_t y,
+                           unsigned int fontSize, TFTColor fg, TFTColor bg);
+
     void showTouchDown(TFTColor color = TFTColor::SC_TouchDown);
     void showTouchUp();
 

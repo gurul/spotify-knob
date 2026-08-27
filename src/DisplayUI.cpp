@@ -412,8 +412,11 @@ void DisplayUI::drawProgressBar(uint16_t x0, uint16_t y0, uint16_t w, uint16_t h
 void DisplayUI::drawStatusBox(TFTColor statusColor) 
 {
     uint8_t margin = 2;
-    int32_t boxX   = 450; //460; //10;
-    int32_t boxY   = 290; //300;
+    // CrowPanel port: was (450,290), which lands ON the round UI's perimeter
+    // progress ring (distance ~232 from center) and stamped a square into it.
+    // This spot is on the play-state row, inside the ring, above the art.
+    int32_t boxX   = 296;
+    int32_t boxY   = 52;
     
     if (xSemaphoreTake(xSemaphoreDisplay, portMAX_DELAY)) 
     {
@@ -1897,13 +1900,153 @@ void DisplayUI::hsvToRgb(float h, float s, float v, uint8_t& r, uint8_t& g, uint
 void DisplayUI::fillArc(int32_t x, int32_t y, int32_t r1, int32_t r2,
                         float startDeg, float endDeg, TFTColor color)
 {
+    // NOT delegated to Arduino_GFX::fillArc. That helper is a slope-sector
+    // scanline rasterizer with degenerate cases near the axis angles — its own
+    // source nudges exact 90/180/270/360 inputs by -0.1 to dodge them — and on
+    // hardware it dropped scanlines for some of the small incremental segments
+    // this ring is painted with, leaving black gaps at fixed clock positions.
+    //
+    // Instead the annulus is tessellated into <=3-degree quads, two triangles
+    // each. fillTriangle is the plain Adafruit scanline fill with no angular
+    // special cases; adjacent quads share exact corner vertices, so the ring
+    // is gap-free by construction. Angles are taken linearly (no fmod), so a
+    // sweep like 270..430 is valid and crosses the wrap without splitting.
+    if (endDeg <= startDeg)
+    {
+        return;
+    }
+
+    if (r1 < r2)
+    {
+        int32_t t = r1; r1 = r2; r2 = t;
+    }
+
+    constexpr float STEP_DEG = 3.0f;
+    constexpr float DEG2RAD  = 0.017453293f;
+
     if (xSemaphoreTake(xSemaphoreDisplay, portMAX_DELAY))
     {
-        _tft->fillArc(x, y, r1, r2, startDeg, endDeg, toValue(color));
+        const uint16_t c = toValue(color);
+
+        float a  = startDeg;
+        float ca = cosf(a * DEG2RAD);
+        float sa = sinf(a * DEG2RAD);
+
+        while (a < endDeg - 0.01f)
+        {
+            float b = a + STEP_DEG;
+            if (b > endDeg)
+            {
+                b = endDeg;
+            }
+            const float cb = cosf(b * DEG2RAD);
+            const float sb = sinf(b * DEG2RAD);
+
+            const int32_t ax_o = x + lroundf(ca * r1), ay_o = y + lroundf(sa * r1);
+            const int32_t ax_i = x + lroundf(ca * r2), ay_i = y + lroundf(sa * r2);
+            const int32_t bx_o = x + lroundf(cb * r1), by_o = y + lroundf(sb * r1);
+            const int32_t bx_i = x + lroundf(cb * r2), by_i = y + lroundf(sb * r2);
+
+            _tft->fillTriangle(ax_o, ay_o, ax_i, ay_i, bx_o, by_o, c);
+            _tft->fillTriangle(ax_i, ay_i, bx_i, by_i, bx_o, by_o, c);
+
+            a  = b;
+            ca = cb;
+            sa = sb;
+        }
+
         xSemaphoreGive(xSemaphoreDisplay);
     }
     else
     {
         spLogI(LOGTAG_MULTITASK, "Unable to take xSemaphoreDisplay in fillArc().");
+    }
+}
+
+
+/*
+** ===================================================================
+** dimRect()  — CrowPanel port addition
+**
+**    Halves the intensity of a framebuffer region in place:
+**    (p >> 1) & 0x7BEF clears the low bit of each RGB565 channel and
+**    shifts, i.e. a true 50% dim with no alpha support needed. Used to
+**    scrim album art behind text.
+** ===================================================================
+*/
+void DisplayUI::dimRect(int32_t x, int32_t y, int32_t w, int32_t h)
+{
+    if (xSemaphoreTake(xSemaphoreDisplay, portMAX_DELAY))
+    {
+        uint16_t *fb = _tft->raw() ? _tft->raw()->getFramebuffer() : nullptr;
+        if (fb != nullptr)
+        {
+            const int32_t fbw = _tft->width();
+            for (int32_t row = y; row < y + h; row++)
+            {
+                uint16_t *px = fb + (int32_t)row * fbw + x;
+                for (int32_t col = 0; col < w; col++)
+                {
+                    px[col] = (px[col] >> 1) & 0x7BEF;
+                }
+            }
+            // CPU wrote PSRAM directly; push it back so scanout sees it.
+            _tft->raw()->flush(true);
+        }
+        else
+        {
+            // No framebuffer access (should not happen on this board):
+            // degrade to a solid band so text stays legible.
+            _tft->fillRect(x, y, w, h, TFT_BLACK);
+        }
+        xSemaphoreGive(xSemaphoreDisplay);
+    }
+    else
+    {
+        spLogI(LOGTAG_MULTITASK, "Unable to take xSemaphoreDisplay in dimRect().");
+    }
+}
+
+/*
+** ===================================================================
+** fillCircleAt()  — CrowPanel port addition
+** ===================================================================
+*/
+void DisplayUI::fillCircleAt(int32_t x, int32_t y, int32_t r, TFTColor color)
+{
+    if (xSemaphoreTake(xSemaphoreDisplay, portMAX_DELAY))
+    {
+        _tft->fillCircle(x, y, r, toValue(color));
+        xSemaphoreGive(xSemaphoreDisplay);
+    }
+    else
+    {
+        spLogI(LOGTAG_MULTITASK, "Unable to take xSemaphoreDisplay in fillCircleAt().");
+    }
+}
+
+
+/*
+** ===================================================================
+** drawStringNoClear()  — CrowPanel port addition
+**
+**    Centered draw with no background clear. OpenFontRender paints
+**    only glyph pixels (anti-aliased toward bg), so this can sit on
+**    album art or beside the ring without erasing either.
+** ===================================================================
+*/
+void DisplayUI::drawStringNoClear(const char *str, int32_t x, int32_t y,
+                                  unsigned int fontSize, TFTColor fg, TFTColor bg)
+{
+    if (xSemaphoreTake(xSemaphoreDisplay, portMAX_DELAY))
+    {
+        _ofr->setAlignment(Align::Center);
+        _ofr->setFontSize(fontSize);
+        _ofr->drawString(str, x, y, toRGB565(fg), toRGB565(bg), Layout::Horizontal);
+        xSemaphoreGive(xSemaphoreDisplay);
+    }
+    else
+    {
+        spLogI(LOGTAG_MULTITASK, "Unable to take xSemaphoreDisplay in drawStringNoClear().");
     }
 }

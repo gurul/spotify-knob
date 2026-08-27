@@ -36,11 +36,17 @@ bool RoundDisplay::begin() {
   _swspi = new Arduino_SWSPI(
       GFX_NOT_DEFINED /* DC */, LCD_CS, LCD_SCK, LCD_SDA, GFX_NOT_DEFINED /* MISO */);
 
+  // The R and B pin GROUPS are deliberately crossed. On hardware, content
+  // pushed as RGB565 comes out red/blue-swapped (photographic album art turns
+  // blue; UI colors hide it because green/white/black are symmetric under an
+  // R-B swap). Elecrow's own example fixes this in software by converting
+  // every LVGL pixel before blitting; crossing the pin groups fixes it in the
+  // pin mux for free — both channels are 5 bits, so the swap is lossless.
   _bus = new Arduino_ESP32RGBPanel(
       LCD_DE, LCD_VSYNC, LCD_HSYNC, LCD_PCLK,
-      LCD_R0, LCD_R1, LCD_R2, LCD_R3, LCD_R4,
-      LCD_G0, LCD_G1, LCD_G2, LCD_G3, LCD_G4, LCD_G5,
       LCD_B0, LCD_B1, LCD_B2, LCD_B3, LCD_B4,
+      LCD_G0, LCD_G1, LCD_G2, LCD_G3, LCD_G4, LCD_G5,
+      LCD_R0, LCD_R1, LCD_R2, LCD_R3, LCD_R4,
       LCD_HSYNC_POLARITY, LCD_HSYNC_FRONT_PORCH, LCD_HSYNC_PULSE_WIDTH, LCD_HSYNC_BACK_PORCH,
       LCD_VSYNC_POLARITY, LCD_VSYNC_FRONT_PORCH, LCD_VSYNC_PULSE_WIDTH, LCD_VSYNC_BACK_PORCH,
       LCD_PCLK_ACTIVE_NEG,

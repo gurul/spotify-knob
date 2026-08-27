@@ -130,6 +130,10 @@ public:
     if (_gfx) _gfx->fillTriangle(x0, y0, x1, y1, x2, y2, color);
   }
 
+  void fillCircle(int32_t x, int32_t y, int32_t r, uint16_t color) {
+    if (_gfx) _gfx->fillCircle(x, y, r, color);
+  }
+
   /// Not a TFT_eSPI method — Arduino_GFX's annular arc, exposed for the round
   /// UI's perimeter progress/volume ring. Angles in degrees; 270 is 12 o'clock
   /// and increasing angles sweep clockwise on screen.

@@ -1,5 +1,6 @@
 /*-------------------------------------------------------------------------------------------------
-** RoundNowPlayingView.cpp — circle-native now-playing view. See header for the layout.
+** RoundNowPlayingView.cpp — circle-native now-playing view. See header for the
+** design and the painting discipline.
 ** SPDX-License-Identifier: MIT
 ** ------------------------------------------------------------------------------------------------
 */
@@ -15,17 +16,32 @@
 namespace {
 
 // TFTColor is an enum class over RGB565, so values outside the named set are
-// still representable. These two are part of this view's look and nothing
-// else's, which is why they live here and not in the shared enum.
+// still representable. This one is this view's look and nothing else's.
 constexpr TFTColor SPOTIFY_GREEN = static_cast<TFTColor>(0x1DCA);  // 29,185,84
-constexpr TFTColor RING_TRACK    = static_cast<TFTColor>(0x2104);  // near-black grey
 
-// Rows chosen so no two dynamic fields share a text row: cDrawString with an
-// empty clear mask wipes the full width of its row before drawing.
-constexpr int32_t CLOCK_Y  = 26;   // clock text row, centered
-constexpr int32_t STATE_Y  = 58;   // play/pause glyph + network status row
-constexpr int32_t TITLE_Y  = 392;  // track title row
-constexpr int32_t ARTIST_Y = 430;  // artists row
+// On-art text rows (inside the scrimmed bottom of the 300px art).
+constexpr int32_t TITLE_Y  = 306;
+constexpr int32_t ARTIST_Y = 346;
+
+// Scrim: bottom rows of the art that get dimmed behind the text.
+constexpr int32_t SCRIM_Y = 296;
+constexpr int32_t SCRIM_H = 94;   // art ends at y=390
+
+// Clock row, above the art.
+constexpr int32_t CLOCK_Y = 38;
+
+// Volume readout: label + bar in the black zone between the art bottom (390)
+// and the bezel. Never touches the art.
+constexpr int32_t VLABEL_Y = 398;
+constexpr int32_t VBAR_W   = 160;
+constexpr int32_t VBAR_H   = 10;
+constexpr int32_t VBAR_X   = 240 - VBAR_W / 2;
+constexpr int32_t VBAR_Y   = 432;
+// One rect that covers the whole readout, for dismissal.
+constexpr int32_t VZONE_X = 140;
+constexpr int32_t VZONE_Y = 394;
+constexpr int32_t VZONE_W = 200;
+constexpr int32_t VZONE_H = (VBAR_Y + VBAR_H + 6) - VZONE_Y;
 
 }  // namespace
 
@@ -43,6 +59,7 @@ void RoundNowPlayingView::enteringView()
 {
     _shownTrackUri  = "";
     _shownClock     = "";
+    _shownVolume    = -1;
     _waitingShowing = false;
     _volumeShowing  = false;
     _pUI->setBackground(TFTColor::Black, true);
@@ -51,68 +68,15 @@ void RoundNowPlayingView::enteringView()
 
 /*
 ** ===================================================================
-** Painters. Each owns one region and diffs against what it last drew,
-** so the 500ms idle cadence repaints only what changed.
+** Painters
 ** ===================================================================
 */
 
-float RoundNowPlayingView::progressFraction() const
+void RoundNowPlayingView::paintArtWithText()
 {
     const PlayingMetadata &playing =
         SpotifyPlayer::getInstance().getCurrentlyPlayingMetadata();
-
-    if (playing.durationMs <= 0)
-    {
-        return 0.0f;
-    }
-
-    long progress = playing.progressMs;
-    if (playing.isPlaying)
-    {
-        progress += (long)(millis() - playing.lastRefreshMs);
-    }
-
-    if (progress < 0)                   progress = 0;
-    if (progress > playing.durationMs)  progress = playing.durationMs;
-
-    return (float)progress / (float)playing.durationMs;
-}
-
-void RoundNowPlayingView::paintRingTrack()
-{
-    _pUI->fillArc(CX, CY, RING_OUTER, RING_INNER, 0, 360, RING_TRACK);
-    _shownProgressDeg = 0.0f;
-}
-
-void RoundNowPlayingView::paintProgress(bool force)
-{
-    if (_volumeShowing)
-    {
-        return;   // the ring belongs to the volume overlay right now
-    }
-
-    const float deg = 360.0f * progressFraction();
-
-    if (force || deg < _shownProgressDeg - 0.5f)
-    {
-        // Track change, seek backwards, or a forced repaint: lay the dark
-        // track down again and draw the sweep from the top.
-        paintRingTrack();
-    }
-
-    if (deg - _shownProgressDeg >= 0.7f)
-    {
-        // Only the newly covered sweep is drawn, so the ring never flickers.
-        _pUI->fillArc(CX, CY, RING_OUTER, RING_INNER,
-                      270.0f + _shownProgressDeg, 270.0f + deg, SPOTIFY_GREEN);
-        _shownProgressDeg = deg;
-    }
-}
-
-void RoundNowPlayingView::paintArt()
-{
-    const PlayingMetadata &playing =
-        SpotifyPlayer::getInstance().getCurrentlyPlayingMetadata();
+    PlayingMetadata &mutablePlaying = const_cast<PlayingMetadata &>(playing);
 
     String filePath = SP_NO_COVER_JPG_FILENAME;
     for (int i = 0; i < playing.numImages; i++)
@@ -128,36 +92,25 @@ void RoundNowPlayingView::paintArt()
 
     _pUI->setJpgScaleToSmall(false);    // 1:1 — the 300px art draws at 300px
     _pUI->drawAlbumArt(ART_X, ART_Y, filePath);
-}
 
-void RoundNowPlayingView::paintTitleBand()
-{
-    const PlayingMetadata &playing =
-        SpotifyPlayer::getInstance().getCurrentlyPlayingMetadata();
-    PlayingMetadata &mutablePlaying = const_cast<PlayingMetadata &>(playing);
+    // Scrim, then text painted with NO clearing rect — a full-width clear
+    // would cut a black band through the art (and did, in earlier layouts).
+    _pUI->dimRect(ART_X, SCRIM_Y, ART_SIZE, SCRIM_H);
 
-    // The chord narrows fast this low on the circle: ~308px at the title row,
-    // ~224px at the artist row. Truncation keeps text off the bezel.
     String title = playing.trackName;
-    if (title.length() > 22)
+    if (title.length() > 20)
     {
-        title = title.substring(0, 21) + "..";
+        title = title.substring(0, 19) + "..";
     }
 
-    _pUI->cDrawString(title.c_str(), CX, TITLE_Y, 26,
-                      TFTColor::White, TFTColor::Black, "");
-    _pUI->cDrawString(mutablePlaying.getArtistsList(24).c_str(), CX, ARTIST_Y, 17,
-                      TFTColor::LightGrey, TFTColor::Black, "");
+    _pUI->drawStringNoClear(title.c_str(), CX, TITLE_Y, 28,
+                            TFTColor::White, TFTColor::Black);
+    _pUI->drawStringNoClear(mutablePlaying.getArtistsList(26).c_str(), CX, ARTIST_Y,
+                            18, TFTColor::LightGrey, TFTColor::Black);
 }
 
 void RoundNowPlayingView::paintClock(bool force)
 {
-    // The clock row doubles as the volume readout while the knob is turning.
-    if (_volumeShowing)
-    {
-        return;
-    }
-
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo, 0))
     {
@@ -171,8 +124,12 @@ void RoundNowPlayingView::paintClock(bool force)
     if (force || _shownClock != text)
     {
         _shownClock = text;
-        _pUI->cDrawString(text, CX, CLOCK_Y, 20,
-                          TFTColor::DarkGrey, TFTColor::Black, "");
+        // Clear only the clock's own cell — the zone above the art is black,
+        // but a narrow clear keeps the habit that nothing wipes full rows.
+        _pUI->drawBlankButton(170, CLOCK_Y - 4, 140, 30, 0,
+                              TFTColor::Black, false);
+        _pUI->drawStringNoClear(text, CX, CLOCK_Y, 18,
+                                TFTColor::DarkGrey, TFTColor::Black);
     }
 }
 
@@ -185,46 +142,64 @@ void RoundNowPlayingView::paintPlayState(bool force)
     {
         return;
     }
+
+    const bool wasPlaying = _shownIsPlaying;
     _shownIsPlaying = isPlaying;
 
-    // Clear the glyph's own cell, then draw. Sits left of center on the
-    // STATE_Y row; the network status box owns the right of the same row.
-    _pUI->drawBlankButton(164, STATE_Y, 22, 22, 0, TFTColor::Black, false);
-    if (isPlaying)
+    if (!isPlaying)
     {
-        _pUI->drawPlayTrackIcon(164, STATE_Y, 20, 20);
+        // Pause: dim the whole art and put the bars in the middle. The scrim
+        // region dims a second time, which reads as intended hierarchy.
+        _pUI->dimRect(ART_X, ART_Y, ART_SIZE, ART_SIZE);
+        _pUI->drawPauseTrackIcon(CX - 28, CY - 40, 56, 64);
     }
-    else
+    else if (force || !wasPlaying)
     {
-        _pUI->drawPauseTrackIcon(164, STATE_Y, 20, 20);
+        // Resume: the art under the dim is gone; repaint it (one JPEG decode).
+        paintArtWithText();
     }
 }
 
-void RoundNowPlayingView::paintVolumeOverlay()
+/*
+** ===================================================================
+** Volume readout — the only transient chrome on the view
+** ===================================================================
+*/
+
+void RoundNowPlayingView::paintVolume()
 {
-    // The perimeter ring becomes the volume gauge: white sweep from the top,
-    // and the clock row shows the number. Progress repaints on expiry.
-    paintRingTrack();
-    const float deg = 3.6f * (float)_volumePercent;
-    if (deg >= 0.7f)
-    {
-        _pUI->fillArc(CX, CY, RING_OUTER, RING_INNER, 270.0f, 270.0f + deg,
-                      TFTColor::White);
-    }
+    char label[8];
+    snprintf(label, sizeof(label), "%d%%", _volumePercent);
 
-    char buf[16];
-    snprintf(buf, sizeof(buf), "Vol %d%%", _volumePercent);
-    _pUI->cDrawString(buf, CX, CLOCK_Y, 20,
-                      TFTColor::White, TFTColor::Black, "");
+    // Clear just the label cell (the bar repaints fully; it is tiny).
+    _pUI->drawBlankButton(VZONE_X, VZONE_Y, VZONE_W, 30, 0,
+                          TFTColor::Black, false);
+    _pUI->drawStringNoClear(label, CX, VLABEL_Y, 22,
+                            TFTColor::White, TFTColor::Black);
+
+    if (_volumePercent < _shownVolume)
+    {
+        // drawProgressBar never un-fills; clear the bar before a shrink.
+        _pUI->drawBlankButton(VBAR_X, VBAR_Y, VBAR_W, VBAR_H, 0,
+                              TFTColor::Black, false);
+    }
+    _pUI->drawProgressBar(VBAR_X, VBAR_Y, VBAR_W, VBAR_H,
+                          (uint8_t)_volumePercent,
+                          TFTColor::DarkGrey, SPOTIFY_GREEN);
+
+    _shownVolume     = _volumePercent;
+    _volumeDirty     = false;
+    _volumePaintedMs = millis();
 }
 
-void RoundNowPlayingView::clearVolumeOverlay()
+void RoundNowPlayingView::dismissVolume()
 {
     _volumeShowing = false;
-    _shownClock    = "";       // force the clock back
-    paintRingTrack();
-    paintProgress(true);
-    paintClock(true);
+    _shownVolume   = -1;
+    // The readout lives entirely in the black zone, so dismissal is one rect —
+    // nothing else needs repainting.
+    _pUI->drawBlankButton(VZONE_X, VZONE_Y, VZONE_W, VZONE_H, 0,
+                          TFTColor::Black, false);
 }
 
 void RoundNowPlayingView::paintWaiting()
@@ -237,11 +212,10 @@ void RoundNowPlayingView::paintWaiting()
     _shownTrackUri  = "";
 
     _pUI->setBackground(TFTColor::Black, true);
-    paintRingTrack();
-    _pUI->cDrawString("Waiting for music", CX, 210, 24,
-                      TFTColor::White, TFTColor::Black, "");
-    _pUI->cDrawString("play something on Spotify", CX, 250, 17,
-                      TFTColor::DarkGrey, TFTColor::Black, "");
+    _pUI->drawStringNoClear("Waiting for music", CX, 216, 24,
+                            TFTColor::White, TFTColor::Black);
+    _pUI->drawStringNoClear("play something on Spotify", CX, 254, 17,
+                            TFTColor::DarkGrey, TFTColor::Black);
 }
 
 void RoundNowPlayingView::fullRepaint()
@@ -249,13 +223,13 @@ void RoundNowPlayingView::fullRepaint()
     const PlayingMetadata &playing =
         SpotifyPlayer::getInstance().getCurrentlyPlayingMetadata();
 
+    _volumeShowing = false;
+    _shownVolume   = -1;
+
     _pUI->setBackground(TFTColor::Black, true);
-    paintRingTrack();
-    paintArt();
-    paintTitleBand();
+    paintArtWithText();
     paintClock(true);
     paintPlayState(true);
-    paintProgress(true);
 
     _shownTrackUri = playing.trackUri;
     _pUI->markUIDirty(false);
@@ -290,35 +264,54 @@ void RoundNowPlayingView::drawUI()
         return;
     }
 
-    paintProgress(false);
     paintClock(false);
     paintPlayState(false);
 }
 
 void RoundNowPlayingView::handle_UM_IDLE(SCUIMessage *pMessage)
 {
-    // Volume overlay expiry is checked at the idle cadence (every ~16ms), not
-    // the draw cadence, so the ring returns promptly after the knob settles.
-    if (_volumeShowing && (millis() - _volumeShownAtMs) >= VOLUME_OVERLAY_MS)
+    const uint32_t now = millis();
+
+    // Volume: all painting happens here, coalesced. A fast twist updates
+    // _volumePercent many times per tick but paints at most every 50ms.
+    if (_volumeShowing)
     {
-        clearVolumeOverlay();
+        if ((now - _volumeTouchedMs) >= VOLUME_HOLD_MS)
+        {
+            dismissVolume();
+        }
+        else if (_volumeDirty && (now - _volumePaintedMs) >= VOLUME_PAINT_MS)
+        {
+            paintVolume();
+        }
     }
 
-    if (millis() > _nextDrawMs)
+    if (now > _nextDrawMs)
     {
         drawUI();
-        _nextDrawMs = millis() + DRAW_PERIOD_MS;
+        _nextDrawMs = now + DRAW_PERIOD_MS;
     }
+}
+
+void RoundNowPlayingView::handle_UM_STATUS_BOX(SCUIMessage *pMessage)
+{
+    // Suppressed: the network status box is dev chrome, not owner UI.
+}
+
+void RoundNowPlayingView::handle_UM_DOWNLOAD_BOX(SCUIMessage *pMessage)
+{
+    // Suppressed, as above.
 }
 
 void RoundNowPlayingView::handleMessage(SCUIMessage *pMessage)
 {
     if (pMessage != nullptr && pMessage->type == SCUIMessageType::UM_VOLUME)
     {
-        _volumePercent  = pMessage->num;
-        _volumeShowing  = true;
-        _volumeShownAtMs = millis();
-        paintVolumeOverlay();
+        // State only — no painting on the input path. See header.
+        _volumePercent   = pMessage->num;
+        _volumeShowing   = true;
+        _volumeDirty     = true;
+        _volumeTouchedMs = millis();
         return;
     }
 
@@ -343,6 +336,13 @@ void RoundNowPlayingView::onTouchDown(const TS_Point &point)
     else
     {
         sp.togglePlayPause();
-        paintPlayState(true);
+        paintPlayState(false);
     }
+}
+
+void RoundNowPlayingView::onTouchUp()
+{
+    // Deliberately a no-op. The base implementation renders the rectangular
+    // button set, and showTouchUp() paints edge bars across the full screen —
+    // both would stamp over the art on this layout.
 }
