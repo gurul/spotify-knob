@@ -205,10 +205,12 @@ SPDX-FileCopyrightText notices are legally required and stay.
       EXPECT: `README-OK`
       EVIDENCE: check ran 2026-08-27, printed `README-OK`, exit 0.
 
-- [ ] G23: The banner referenced by the README exists and is a real raster image,
+- [x] G23: The banner referenced by the README exists and is a real raster image,
       not a placeholder.
       CHECK: `cd /Users/gurucharan/Documents/work/spotify-knob && node -e "const fs=require('fs');const c=[['docs/thumbnail.jpg',[0xff,0xd8]],['docs/thumbnail.png',[0x89,0x50]]];const hit=c.find(([f])=>fs.existsSync(f));if(!hit){console.error('no thumbnail file');process.exit(1)}const[f,sig]=hit;const b=fs.readFileSync(f);if(b.length<10240||b[0]!==sig[0]||b[1]!==sig[1]){console.error('bad signature or <10KB: '+f+' '+b.length);process.exit(1)}console.log('THUMB-OK '+f)"`
       EXPECT: `THUMB-OK`
+      EVIDENCE: check ran 2026-08-27, printed `THUMB-OK docs/thumbnail.png`
+      (750x330 PNG, 38KB, owner-supplied, center-cropped), exit 0.
 
 - [x] G24: This branch is pushed: the remote ref equals local HEAD.
       CHECK: `cd /Users/gurucharan/Documents/work/spotify-knob && node -e "const{execSync:x}=require('child_process');const h=x('git rev-parse HEAD').toString().trim();const r=x('git ls-remote origin refs/heads/feat/crowpanel-21-rotary-port').toString().trim().split(String.fromCharCode(9))[0];if(h!==r){console.error('local '+h+' != remote '+r);process.exit(1)}console.log('PUSH-OK')"`
@@ -218,7 +220,7 @@ SPDX-FileCopyrightText notices are legally required and stay.
 - [x] G25: CI is green on the pushed head of this branch.
       CHECK: `cd /Users/gurucharan/Documents/work/spotify-knob && node -e "const{execSync:x}=require('child_process');const h=x('git rev-parse HEAD').toString().trim();const runs=JSON.parse(x('gh run list --branch feat/crowpanel-21-rotary-port --json headSha,status,conclusion --limit 10').toString());const r=runs.find(r=>r.headSha===h);if(!r){console.error('no CI run for '+h);process.exit(1)}if(r.status!=='completed'||r.conclusion!=='success'){console.error(r.status+'/'+r.conclusion);process.exit(1)}console.log('CI-GREEN')"`
       EXPECT: `CI-GREEN`
-      EVIDENCE: check ran 2026-08-27, printed `CI-GREEN`, exit 0 — run 33047216855-era on head 2816826 after the Python 3.9→3.12 workflow fix.
+      EVIDENCE: check ran 2026-08-27, printed `CI-GREEN`, exit 0 — run 33047233347 on head 2816826 after the Python 3.9→3.12 workflow fix.
 
 - [x] G26: The portfolio's spotKnob entry is committed on main and pushed.
       CHECK: `cd /Users/gurucharan/Documents/work/portfolio && node -e "const{execSync:x}=require('child_process');if(x('git status --porcelain app/hardware/page.js').toString().trim()){console.error('uncommitted');process.exit(1)}const t=x('git show HEAD:app/hardware/page.js').toString();if(!t.includes('spotKnob')){console.error('no spotKnob at HEAD');process.exit(1)}const h=x('git rev-parse HEAD').toString().trim();const r=x('git ls-remote origin refs/heads/main').toString().trim().split(String.fromCharCode(9))[0];if(h!==r){console.error('local '+h+' != remote '+r);process.exit(1)}console.log('PORTFOLIO-OK')"`
@@ -229,5 +231,5 @@ Note on verification method (Phase 5): the gate-check harness mis-executes
 multi-line gate blocks in this ledger (it runs the EXPECT token as a shell
 command, exit 127). Every Phase 5 check above was therefore executed directly
 with `/bin/sh -c` and judged on real exit status + output, recorded per gate.
-G23 remains open: the banner image is user-supplied (Nano Banana) and not yet
-delivered.
+G23 closed 2026-08-27: the owner supplied the banner, it was cropped to
+750x330 and committed as docs/thumbnail.png.

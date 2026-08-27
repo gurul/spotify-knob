@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/thumbnail.jpg" alt="spotKnob — the round display showing album art, with the rotary knob" width="720">
+  <img src="docs/thumbnail.png" alt="spotKnob" width="720">
 </p>
 
 <h1 align="center">spotKnob</h1>
@@ -262,24 +262,6 @@ GATES.md            acceptance ledger: what is proven, and by what evidence
 
 The knob switch is polled, never read from an ISR: it lives on the PCF8574, so
 reading it is an I2C transaction and cannot happen in interrupt context.
-
-## Traps that cost real time
-
-Recorded because each one was invisible until it wasn't.
-
-**Null callback on the first JPEG.** `DisplayUI`'s constructor registered
-`TJpgDec.setCallback()` at static-init time. Both are globals in different
-translation units, so when `TJpgDec` constructed second it zeroed the callback —
-and TJpg_Decoder calls it without a null check. Jump to `0x00000000`, 4.5-second
-reboot loop. It had always survived on link-order luck; adding the `Board/`
-globals changed the order and the latent bug surfaced. Registration moved to
-`DisplayUI::init()`, at runtime.
-
-**Stale CA bundle.** Album art failed TLS while metadata succeeded, because only
-the image CDN had rotated to a root that was not pinned. See above.
-
-**Core 3.x transitive includes.** `WiFiClientSecure.h` and `esp_mac.h` used to
-arrive indirectly on core 2.x and must now be named explicitly.
 
 ## License
 
