@@ -20,6 +20,24 @@
 
 #include "BoardPins.h"
 
+/// Source-compatible replacement for FT6236.h's TS_Point.
+///
+/// The UIViews take TS_Point by reference, so keeping the name lets them port
+/// untouched. FT6236 itself is not built — it is an I2C driver for a different
+/// controller and would fight the CST8xx on the same bus.
+class TS_Point {
+public:
+  TS_Point() : x(0), y(0), z(0) {}
+  TS_Point(int16_t px, int16_t py, int16_t pz = 0) : x(px), y(py), z(pz) {}
+
+  bool operator==(TS_Point o) { return x == o.x && y == o.y && z == o.z; }
+  bool operator!=(TS_Point o) { return !(*this == o); }
+
+  int16_t x;
+  int16_t y;
+  int16_t z;
+};
+
 enum class TouchGesture : uint8_t {
   None,
   Tap,

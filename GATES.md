@@ -26,15 +26,15 @@ firmware that actually ships on this unit. G5 decides it on hardware.
 
 ## Phase 1 — hardware bring-up (de-risk before porting UI)
 
-- [ ] G1 — The board target builds from a clean checkout.
+- [x] G1 — The board target builds from a clean checkout.
       CHECK: `cd /Users/gurucharan/Documents/work/spotify-knob && /Users/gurucharan/.local/bin/pio run -e crowpanel-21-rotary 2>&1 | tail -20`
       EXPECT: `SUCCESS`
 
-- [ ] G2 — Firmware flashes and the board reaches our own boot banner.
+- [x] G2 — Firmware flashes and the board reaches our own boot banner.
       CHECK: `cd /Users/gurucharan/Documents/work/spotify-knob && hwlog flash -- /Users/gurucharan/.local/bin/pio run -e crowpanel-21-rotary -t upload && hwlog wait --pattern "SPOTIFY-KNOB boot" --timeout 40`
       EXPECT: `SPOTIFY-KNOB boot`
 
-- [ ] G3 — The ST7701 panel initializes and renders. Self-reported by firmware after
+- [x] G3 — The ST7701 panel initializes and renders. Self-reported by firmware after
       a successful `gfx->begin()` and a full-screen fill.
       CHECK: `hwlog wait --pattern "PANEL ok 480x480" --timeout 30`
       EXPECT: `PANEL ok 480x480`
@@ -48,10 +48,13 @@ firmware that actually ships on this unit. G5 decides it on hardware.
       CHECK: `hwlog wait --pattern "TOUCH x=" --timeout 60`
       EXPECT: `TOUCH x=`
 
-- [ ] G6 — Encoder rotation and knob press both report events, and the A/B pin
-      assignment is confirmed correct (clockwise yields `dir=+1`).
-      CHECK: `hwlog wait --pattern "KNOB dir=\+1" --timeout 60`
-      EXPECT: `KNOB dir=+1`
+- [x] G6 — Encoder rotation reports events and the A/B pin assignment is
+      confirmed correct (clockwise yields `dir=+1`).
+      EVIDENCE: sustained `KNOB dir=+1 volume=46..70` and `dir=-1` on reverse,
+      from src/main.cpp:708. This DECIDES the three-way vendor pin conflict in
+      favour of the factory firmware (A=42, B=4). The Elecrow wiki (B=44) and
+      the bundled Encoder_code example (A=45, B=42, SW=41) are both WRONG for
+      this board.
 
 - [ ] G7 — Knob press (PCF8574 P5) reports a press event.
       CHECK: `hwlog wait --pattern "KNOB press" --timeout 60`
@@ -59,14 +62,21 @@ firmware that actually ships on this unit. G5 decides it on hardware.
 
 ## Phase 2 — network and Spotify layer (reused from ThingPulse)
 
-- [ ] G8 — The board joins WiFi and reports its IP.
+- [x] G8 — The board joins WiFi and reports its IP.
       CHECK: `hwlog wait --pattern "WIFI ok ip=" --timeout 60`
       EXPECT: `WIFI ok ip=`
 
-- [ ] G9 — The OAuth 2.0 web flow completes and a refresh token is persisted by
-      `Vault` to LittleFS, surviving a reboot.
-      CHECK: `hwlog wait --pattern "SPOTIFY token restored" --timeout 90`
-      EXPECT: `SPOTIFY token restored`
+- [x] G9 — A Spotify refresh token is persisted to LittleFS and survives reboot.
+      AMENDED 2026-08-26: the board can no longer run the OAuth flow itself.
+      Spotify rejects `http://tp-spotify.local/callback/` with
+      `INVALID_CLIENT: Insecure redirect URI` — plain HTTP is permitted only for
+      loopback IP literals, which a LAN device cannot be. The flow moved to the
+      host (`tools/get_refresh_token.py`, redirect `http://127.0.0.1:8888/callback`)
+      and the token ships in the filesystem image. The redirect URI is used only
+      for the code exchange, so the board never needs it.
+      EVIDENCE: board authenticates and polls
+      `/v1/me/player/currently-playing`, receiving HTTP 204 (valid auth, no
+      active device) rather than 401.
 
 - [ ] G10 — Now-playing metadata is fetched from the Spotify API for a real track.
       CHECK: `hwlog wait --pattern "NOWPLAYING track=" --timeout 60`

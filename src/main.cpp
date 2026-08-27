@@ -79,7 +79,13 @@
 #include "SCLogger.h"                   // Logging framework
 #include "Monitor.h"                    // Monitoring
 
-#include "ThingPulse/display.h"         // ThingPulse display routines
+// ThingPulse/display.h is NOT used on this board: it initializes TFT_eSPI and
+// an FT6236 touch controller, neither of which exists here.
+#include "Board/BoardPins.h"            // CrowPanel 2.1" pinout
+#include "Board/Expander.h"             // PCF8574: LCD power/reset, touch reset, knob switch
+#include "Board/RoundDisplay.h"         // ST7701S 480x480 RGB panel
+#include "Board/Touch.h"                // CST8xx capacitive touch
+#include "Board/Knob.h"                 // rotary encoder + push switch
 #include "ThingPulse/util.h"            // ThingPulse utility routines
 #include "SCFileIO.h"                   // File IO routines - thread safe
 #include "SpotifyArtMgr.h"
@@ -105,7 +111,9 @@ void initOpenFontRender();           // initialize the font renderer
 void initScheduler();                // Initialize the task scheduler
 void registerMonitorDescriptions();  // Initialize the monitor descriptions
 void processPerformanceMetrics();    // Show metrics on schedule
+void initBoard();                    // Bring up the CrowPanel hardware, in order
 void handleTouchInput();             // Check if LCD pressed
+void handleKnobInput();              // Rotary encoder: volume, play/pause, skip
 void dispatchSCUIQueueMessages();    // Dispatch messages to active view
 
 // Task handles
@@ -127,7 +135,6 @@ bool          bIsInitialLift  = false;
 */
 OpenFontRender    ofr;
 OpenFontRender    clockFont;
-FT6236            ts            = FT6236(TFT_HEIGHT, TFT_WIDTH);     // Touch Controller
 TFT_eSPI          tft           = TFT_eSPI();                        // LCD display
 DisplayUI         ui            = DisplayUI(&tft, &ofr, &clockFont); // Routines to update UI
 SpotifyPlayer&    spotifyPlayer = SpotifyPlayer::getInstance();      // Spotify Player
@@ -166,9 +173,7 @@ void setup()
     logMemoryStats();
 
     // Initialize everything
-    initTouchScreen(&ts);
-    initTft(&tft);
-    logDisplayDebugInfo(&tft);
+    initBoard();
     initOpenFontRender();
 
     if (!SCFileIO::getInstance().initialize())
@@ -468,7 +473,12 @@ void uiHandlerTask(void *pvParameters)
 
         pActiveView = UIViewManager::getInstance().getActiveView(); 
 
-        handleTouchInput();    
+        handleTouchInput();
+
+        handleKnobInput();
+
+        // Pushes a settled volume change, if the knob has stopped moving.
+        spotifyPlayer.commitPendingVolume();
 
         // Reset pActiveView in case it changed after handling input
         // (if you don't do this, messages will go to the wrong
@@ -517,21 +527,19 @@ void processPerformanceMetrics()
 void handleTouchInput()
 {
     static bool isTouchInProgress = false;
-    if (ts.touched())
+    int16_t rawX = 0;
+    int16_t rawY = 0;
+    if (touch.raw(rawX, rawY))
     {
         // track touch has started
         isTouchInProgress = true;
 
-        // x and y are the portrait coordinates.
-        // not sure why... 
-        TS_Point p = ts.getPoint();
-
-        // flip the cooridnates to be landscape
-        uint16_t touchX = p.y;
-        uint16_t touchY = tft.height() - p.x;
-
-        p.x = touchX;
-        p.y = touchY;
+        // The CST8xx reports in the panel's native orientation and the panel is
+        // square, so unlike the ThingPulse board there is no portrait-to-
+        // landscape flip to undo here.
+        TS_Point p(rawX, rawY, 0);
+        const uint16_t touchX = p.x;
+        const uint16_t touchY = p.y;
 
         bIsInitialLift = false;
         if (!bIsInitialPress)
@@ -612,3 +620,116 @@ void dispatchSCUIQueueMessages()
     pActiveView->handleMessage(&message);
 }
 
+
+
+/*
+** ===================================================================
+** initBoard()
+**
+**    Brings up the CrowPanel 2.1" hardware. The order is not
+**    negotiable: the panel's power rail and reset line are behind the
+**    PCF8574, so I2C and the expander must be alive before the RGB bus
+**    is touched. Getting this wrong yields a dark or noisy panel with
+**    no error reported anywhere.
+** ===================================================================
+*/
+void initBoard()
+{
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, I2C_FREQ_HZ);
+
+    // P2 (touch INT) and P5 (encoder switch) are read back, so the expander
+    // must hold them high; see Expander.h on why the shadow byte matters.
+    const uint8_t inputMask = (uint8_t)((1u << PCF_TOUCH_INT) | (1u << PCF_ENCODER_SW));
+    if (!expander.begin(inputMask))
+    {
+        spLogE(LOGTAG_GENERAL, "PCF8574 missing at 0x%02X — panel cannot be powered", PCF8574_ADDR);
+    }
+
+    if (display.begin())
+    {
+        spLogI(LOGTAG_GENERAL, "PANEL ok %dx%d", PANEL_WIDTH, PANEL_HEIGHT);
+    }
+    else
+    {
+        spLogE(LOGTAG_GENERAL, "PANEL FAIL");
+    }
+
+    // Hand the live panel to the TFT_eSPI-shaped facade the drawing code uses.
+    tft.attach(display.gfx());
+    tft.setSwapBytes(true);   // TJpg_Decoder emits big-endian RGB565
+
+    if (touch.begin())
+    {
+        spLogI(LOGTAG_GENERAL, "TOUCH ok 0x%02X", TOUCH_I2C_ADDR);
+    }
+    else
+    {
+        spLogE(LOGTAG_GENERAL, "TOUCH FAIL");
+    }
+
+    if (knob.begin())
+    {
+        spLogI(LOGTAG_GENERAL, "KNOB ok A=%d B=%d SW=PCF.P%d",
+               ENCODER_A_PIN, ENCODER_B_PIN, PCF_ENCODER_SW);
+    }
+    else
+    {
+        spLogE(LOGTAG_GENERAL, "KNOB FAIL");
+    }
+}
+
+/*
+** ===================================================================
+** handleKnobInput()
+**
+**    Maps the rotary encoder onto playback:
+**
+**      rotate      -> volume, 2% per detent
+**      press       -> play/pause toggle
+**      long press  -> re-seed volume from the active device
+**
+**    Rotation only moves a local shadow here. The network write is
+**    debounced inside SpotifyPlayer, because a single flick of this
+**    knob emits far more detents than the Web API will accept writes.
+** ===================================================================
+*/
+void handleKnobInput()
+{
+    static constexpr int VOLUME_STEP_PCT = 2;
+
+    KnobEvent ev;
+    while (knob.poll(ev))
+    {
+        switch (ev.type)
+        {
+            case KnobEventType::Rotate:
+            {
+                const int vol = spotifyPlayer.nudgeVolume(ev.delta * VOLUME_STEP_PCT);
+                spLogD(LOGTAG_INPUT, "KNOB dir=%+d volume=%d",
+                       (ev.delta > 0) ? 1 : -1, vol);
+
+                // Repaint now so the knob feels attached to the screen rather
+                // than to the network.
+                SCUIMessage msg;
+                msg.type = SCUIMessageType::UM_MARK_DIRTY;
+                msg.str  = "";
+                msg.num  = true;
+                xQueueSend(scuiQueue, &msg, 0);
+                break;
+            }
+
+            case KnobEventType::Press:
+                spLogI(LOGTAG_INPUT, "KNOB press");
+                spotifyPlayer.togglePlayPause();
+                break;
+
+            case KnobEventType::LongPress:
+                spLogI(LOGTAG_INPUT, "KNOB longpress — reseeding volume");
+                spotifyPlayer.refreshVolumeFromDevice();
+                break;
+
+            default:
+                break;
+        }
+    }
+}

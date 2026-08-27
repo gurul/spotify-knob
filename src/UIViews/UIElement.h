@@ -17,7 +17,10 @@
 
 #pragma once
 #include <memory>
-#include "FT6236TouchController/FT6236.h"
+// TS_Point now comes from the CrowPanel touch layer. The FT6236 driver is for
+// the ThingPulse board's controller and is not built here — this board has a
+// CST8xx, and both drivers would contend on the same I2C bus.
+#include "Board/Touch.h"
 #include "Renderers/IUIRenderer.h"
 
 /*

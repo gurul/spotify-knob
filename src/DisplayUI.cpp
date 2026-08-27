@@ -124,8 +124,7 @@ DisplayUI::DisplayUI(TFT_eSPI *tft, OpenFontRender *ofr, OpenFontRender *clockFo
     _ofr        = ofr;
     _clockFont  = clockFont;
 
-    TJpgDec.setJpgScale(1);
-    TJpgDec.setCallback(DisplayUI::jpgCallback);    
+    // The TJpgDec setup deliberately does NOT happen here — see init().
 }
 
 /*
@@ -136,7 +135,21 @@ DisplayUI::DisplayUI(TFT_eSPI *tft, OpenFontRender *ofr, OpenFontRender *clockFo
 */
 void DisplayUI::init()
 {
-   pInstance = this; 
+   pInstance = this;
+
+   // Registered here, at runtime, and NOT in the constructor.
+   //
+   // `ui` and `TJpgDec` are both globals in different translation units, so
+   // their construction order is unspecified. Doing this in the DisplayUI
+   // constructor means TJpgDec may be constructed afterwards, which zeroes the
+   // callback again — and a null output callback is not diagnosed, it is
+   // *called*. The result is a jump to 0x00000000 the first time a JPEG is
+   // decoded (InstrFetchProhibited, PC 0x00000000, via drawLogo()).
+   //
+   // Upstream got away with it on link-order luck; adding the Board/ globals
+   // for this port changed that order and the latent bug surfaced.
+   TJpgDec.setJpgScale(1);
+   TJpgDec.setCallback(DisplayUI::jpgCallback);
 }
 
 /*

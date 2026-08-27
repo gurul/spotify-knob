@@ -90,6 +90,21 @@ public:
   bool getSwapBytes() const    { return _swapBytes; }
 
   // -- primitives ----------------------------------------------------------
+  // OpenFontRender::setDrawer() binds against these three by name, so they are
+  // required even though the application never calls them directly. Glyphs are
+  // rasterized pixel by pixel between a startWrite/endWrite pair.
+  void drawPixel(int32_t x, int32_t y, uint16_t color) {
+    if (_gfx) _gfx->drawPixel(x, y, color);
+  }
+
+  void startWrite() {
+    if (_gfx) _gfx->startWrite();
+  }
+
+  void endWrite() {
+    if (_gfx) _gfx->endWrite();
+  }
+
   void fillScreen(uint16_t color) {
     if (_gfx) _gfx->fillScreen(color);
   }
@@ -143,5 +158,3 @@ private:
 
 /// Lets the ported ThingPulse sources keep their existing type name.
 using TFT_eSPI = TFTCompat;
-
-extern TFTCompat tft;

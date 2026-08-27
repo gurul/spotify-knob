@@ -6,3 +6,6 @@ data/user.ini
 
 # PlatformIO
 .pio/
+
+# Host-side OAuth artefact — never commit a token
+data/refresh-token.txt

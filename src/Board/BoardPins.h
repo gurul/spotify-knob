@@ -55,15 +55,34 @@ static constexpr int8_t LCD_R0 = 46, LCD_R1 = 3,  LCD_R2 = 8,  LCD_R3 = 18, LCD_
 static constexpr int8_t LCD_G0 = 14, LCD_G1 = 13, LCD_G2 = 12, LCD_G3 = 11, LCD_G4 = 10, LCD_G5 = 9;
 static constexpr int8_t LCD_B0 = 5,  LCD_B1 = 45, LCD_B2 = 48, LCD_B3 = 47, LCD_B4 = 21;
 
-// Panel timing. The ST7701 is intolerant of wrong porches: a bad value gives a
-// rolling or torn image rather than a clean failure, so these are not knobs to
-// tune casually.
-static constexpr uint16_t LCD_HSYNC_FRONT_PORCH = 10;
-static constexpr uint16_t LCD_HSYNC_PULSE_WIDTH = 4;
-static constexpr uint16_t LCD_HSYNC_BACK_PORCH  = 20;
-static constexpr uint16_t LCD_VSYNC_FRONT_PORCH = 10;
-static constexpr uint16_t LCD_VSYNC_PULSE_WIDTH = 4;
-static constexpr uint16_t LCD_VSYNC_BACK_PORCH  = 20;
+// Panel timing.
+//
+// Source: Elecrow's own ESPHome config for this board
+// (example/esphome/*.yaml, platform: st7701s). Their Arduino factory sketch
+// disagrees on every one of these values and produces a SHEARED image on real
+// hardware — two diagonal bars on a dark field — because the total horizontal
+// period does not match what the panel clocks out. The ESPHome numbers are the
+// ones that actually work.
+//
+// Rejected (Elecrow Arduino sketch): h 10/4/20, v 10/4/20. Its own inline
+// comments contradicted its literals, e.g. `4 /* hsync_pulse_width(8) */`,
+// which is a fair warning that the file was never the reference.
+//
+// The ST7701 fails soft: wrong porches give a torn or rolling picture, never an
+// error. Do not tune these by feel.
+static constexpr uint16_t LCD_HSYNC_FRONT_PORCH = 20;
+static constexpr uint16_t LCD_HSYNC_PULSE_WIDTH = 10;
+static constexpr uint16_t LCD_HSYNC_BACK_PORCH  = 10;
+static constexpr uint16_t LCD_VSYNC_FRONT_PORCH = 8;
+static constexpr uint16_t LCD_VSYNC_PULSE_WIDTH = 10;
+static constexpr uint16_t LCD_VSYNC_BACK_PORCH  = 10;
+
+// Pixel clock. 18 MHz with an inverted (falling-edge) clock, per the same
+// ESPHome config (`pclk_frequency: 18MHz`, `pclk_inverted: true`). Leaving the
+// library default here is itself a bug: it picks a speed this panel does not
+// latch cleanly.
+static constexpr int32_t  LCD_PCLK_HZ         = 18000000;
+static constexpr uint16_t LCD_PCLK_ACTIVE_NEG = 1;
 
 // ---------------------------------------------------------------------------
 // Backlight — LEDC PWM
