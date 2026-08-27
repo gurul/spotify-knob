@@ -783,6 +783,15 @@ void SpotifyPlayer::saveCache()
 void SpotifyPlayer::refreshCurrentSongTask(void *pvParameters) 
 {
     spLogI(LOGTAG_MULTITASK, "background task executing.  about to enter loop.");
+
+    // ESP32 Arduino core 3.x no longer auto-subscribes tasks to the task
+    // watchdog, so the esp_task_wdt_reset() below logged
+    //   E task_wdt: esp_task_wdt_reset(707): task not found
+    // on every loop — thousands of error lines per hour of pure noise.
+    // Subscribe once; if the WDT is not initialized the call fails harmlessly
+    // and the reset stays a no-op, same as before.
+    esp_task_wdt_add(NULL);
+
     // TODO: work this out better so it just simply starts when ready
     vTaskDelay(pdMS_TO_TICKS(2000)); // 2000 ms delay to get started and wait for everything to process
     while (true) {
