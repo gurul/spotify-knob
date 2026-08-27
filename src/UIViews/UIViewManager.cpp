@@ -192,7 +192,7 @@ void UIViewManager::initializeViews(DisplayUI *pUI)
 {
     _views = {
         // CrowPanel port: the Home slot is the circle-native view. HomeView is
-        // the ThingPulse 480x320 landscape layout, which the round bezel clips
+        // the original 480x320 landscape layout, which the round bezel clips
         // at every corner; it remains in the tree but is no longer reachable.
         std::make_unique<RoundNowPlayingView>(pUI),
         std::make_unique<CoverView>(pUI),

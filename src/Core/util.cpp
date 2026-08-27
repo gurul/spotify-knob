@@ -2,7 +2,7 @@
 **
 ** util.cpp
 **
-**    Utility routines from ThingPulse. Includes time synchronization, logging,
+**    Shared utility routines. Includes time synchronization, logging,
 **    timezone handling, memory diagnostics, and general-purpose helpers for
 **    the ESP32 Spotify Remote.
 **
@@ -13,7 +13,7 @@
 ** Change Log:
 **    2024-12-26 - Electric Diversions - Copied and renamed to tpUtil.h from util.h
 **    2024-12-27 - Electric Diversions - Added source file and split out function declarations
-**    2025-05-04 - Electric Diversions - Renamed back to util and moved to ThingPulse folder
+**    2025-05-04 - Electric Diversions - Renamed back to util and moved to the Core folder
 ** ------------------------------------------------------------------------------------------------
 */
 

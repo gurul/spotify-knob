@@ -40,7 +40,7 @@ public:
     void   pauseSong();
 
     // ---- added for the CrowPanel rotary port -------------------------------
-    // The ThingPulse remote was touch-only, so upstream has no volume control
+    // The original remote was touch-only, so it had no volume control
     // and no resume — pauseSong() only ever paused.
 
     /// Toggles play/pause against the live player. Returns the state it moved

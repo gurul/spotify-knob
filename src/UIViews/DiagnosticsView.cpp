@@ -18,7 +18,7 @@
 #include "DiagnosticsView.h"
 #include "SCLogger.h"
 #include "logTags.h"
-#include "ThingPulse/util.h"  
+#include "Core/util.h"  
 #include "Monitor.h"
 #include "SpotifyArtMgr.h"
 #include "settings.h"

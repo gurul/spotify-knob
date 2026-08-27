@@ -2,7 +2,7 @@
 **
 ** TFTCompat.h
 **
-**    A TFT_eSPI-shaped facade over Arduino_GFX, so the ThingPulse drawing code
+**    A TFT_eSPI-shaped facade over Arduino_GFX, so the ported drawing code
 **    ports to the CrowPanel's RGB parallel panel without being rewritten.
 **
 **    TFT_eSPI cannot drive an RGB parallel panel at all — it speaks SPI to a
@@ -168,5 +168,5 @@ private:
   bool                 _swapBytes = false;
 };
 
-/// Lets the ported ThingPulse sources keep their existing type name.
+/// Lets the ported sources keep their existing type name.
 using TFT_eSPI = TFTCompat;

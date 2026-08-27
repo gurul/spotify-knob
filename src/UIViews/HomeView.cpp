@@ -19,7 +19,7 @@
 #include "HomeView.h"
 #include "SCLogger.h"
 #include "logTags.h"
-#include "ThingPulse/util.h"  
+#include "Core/util.h"  
 #include "SpotifyArtMgr.h"
 #include "Renderers/PreviousTrackButtonRenderer.h"
 #include "Renderers/PlayPauseButtonRenderer.h"

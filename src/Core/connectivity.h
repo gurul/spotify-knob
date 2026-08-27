@@ -13,7 +13,7 @@
 ** Change Log:
 **    2024-12-26 - Electric Diversions - Copied and renamed to tpConnectivity.h from connectivity.h
 **    2024-12-27 - Electric Diversions - Reintroduced connectivity.cpp from separated header.
-**    2025-05-04 - Electric Diversions - Moved to ThingPulse folder.
+**    2025-05-04 - Electric Diversions - Moved to the Core folder.
 ** ------------------------------------------------------------------------------------------------
 */
 

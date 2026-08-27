@@ -11,7 +11,7 @@
 **
 ** ------------------------------------------------------------------------------------------------
 ** Change Log:
-**    2024-12-26 - Electric Diversions - Copied from ThingPulse Spotify Remote.
+**    2024-12-26 - Electric Diversions - Initial import.
 **    2024-12-27 - Electric Diversions - Removed blocking declarations and dead code.
 ** ------------------------------------------------------------------------------------------------
 */
@@ -67,7 +67,7 @@ constexpr const char* COMPILE_TIME = SC_COMPILE_TIME;
 
 /*
 ** ===================================================================
-** System Settings - Per ThingPulse, do not modify unless you 
+** System Settings - Do not modify unless you 
 **                   understand what you are doing!
 ** ===================================================================
 */

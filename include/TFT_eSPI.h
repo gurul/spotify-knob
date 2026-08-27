@@ -8,7 +8,7 @@
 **    panel — that panel is fed a continuous pixel stream from PSRAM by the
 **    ESP32-S3 LCD peripheral.
 **
-**    This header exists so the ported ThingPulse sources keep their original
+**    This header exists so the ported sources keep their original
 **    `#include <TFT_eSPI.h>` line and their `TFT_eSPI *` types. It redirects
 **    to the Arduino_GFX-backed facade in src/Board/TFTCompat.h.
 **

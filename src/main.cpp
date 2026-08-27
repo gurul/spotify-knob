@@ -73,20 +73,18 @@
 #include "settings.h"                   // Global settings to configure app
 #include "Vault.h"                      // Credential management
 #include "DisplayUI.h"                  // Base class for the UI
-#include "ThingPulse/connectivity.h"    // Connectivity support
+#include "Core/connectivity.h"    // Connectivity support
 #include "SpotifyPlayer.h"              // Spotify Player for all the controls
 #include "logTags.h"                    // Tags for logging
 #include "SCLogger.h"                   // Logging framework
 #include "Monitor.h"                    // Monitoring
 
-// ThingPulse/display.h is NOT used on this board: it initializes TFT_eSPI and
-// an FT6236 touch controller, neither of which exists here.
 #include "Board/BoardPins.h"            // CrowPanel 2.1" pinout
 #include "Board/Expander.h"             // PCF8574: LCD power/reset, touch reset, knob switch
 #include "Board/RoundDisplay.h"         // ST7701S 480x480 RGB panel
 #include "Board/Touch.h"                // CST8xx capacitive touch
 #include "Board/Knob.h"                 // rotary encoder + push switch
-#include "ThingPulse/util.h"            // ThingPulse utility routines
+#include "Core/util.h"            // Shared utility routines
 #include "SCFileIO.h"                   // File IO routines - thread safe
 #include "SpotifyArtMgr.h"
 #include "UIViews/UIViewManager.h"
@@ -535,7 +533,7 @@ void handleTouchInput()
         isTouchInProgress = true;
 
         // The CST8xx reports in the panel's native orientation and the panel is
-        // square, so unlike the ThingPulse board there is no portrait-to-
+        // square, so unlike the original board there is no portrait-to-
         // landscape flip to undo here.
         TS_Point p(rawX, rawY, 0);
         const uint16_t touchX = p.x;

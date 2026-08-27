@@ -1,46 +1,49 @@
-# Spotify Knob
+<p align="center">
+  <img src="docs/thumbnail.jpg" alt="spotKnob — the round display showing album art, with the rotary knob" width="720">
+</p>
 
-A Spotify remote on the **Elecrow CrowPanel 2.1" HMI ESP32 Rotary Display** — a
-480×480 round IPS panel with a capacitive touch overlay and a clicking rotary
-knob, driven by an ESP32-S3.
+<h1 align="center">spotKnob</h1>
 
-Turn the knob for volume, press it for play/pause, swipe the glass to skip.
-Album art, track, artist and progress render on the round face.
+<p align="center">
+  A WiFi Spotify controller on a round display with a clicking rotary knob.
+</p>
 
-This is a port of [ThingPulse/esp32-spotify-remote][upstream], which targets
-ThingPulse's own Color Kit Grande. The Spotify half — OAuth, the API client, the
-album-art cache, the view manager — is reused almost unchanged. The display and
-input half is new, because the two boards have nothing in common below the
-drawing API.
-
-[upstream]: https://github.com/ThingPulse/esp32-spotify-remote
+<p align="center">
+  <a href="#hardware">Hardware</a> ·
+  <a href="#build-and-flash">Build & flash</a> ·
+  <a href="#spotify-setup">Spotify setup</a> ·
+  <a href="#controls">Controls</a> ·
+  <a href="#debugging">Debugging</a>
+</p>
 
 ---
 
-## Why the display layer had to be replaced
+Turn the knob for volume, press it for play/pause, swipe the glass to skip.
+Album art, track, artist and progress render on the round face. It runs on the
+**Elecrow CrowPanel 2.1" HMI ESP32 Rotary Display** — a 480×480 round IPS panel
+with a capacitive touch overlay and a rotary encoder, driven by an ESP32-S3 —
+and talks to the Spotify Web API directly over WiFi. No phone, no companion
+app, no cloud middleman.
 
-Upstream drives an **ILI9488 over SPI** through `TFT_eSPI`. The CrowPanel has an
-**ST7701S on a 16-bit RGB parallel bus**. These are not two configurations of one
-thing:
+## How the display works
+
+The panel is an **ST7701S on a 16-bit RGB parallel bus**, which is a very
+different animal from the usual SPI hobby display:
 
 - An SPI display holds its own framebuffer. You send it commands and pixels.
 - An RGB parallel panel holds nothing. The ESP32-S3's LCD peripheral scans a
   framebuffer out of PSRAM continuously, in real time, and the panel is just a
   shift register with a timing contract.
 
-`TFT_eSPI` cannot address that at all, so the backend moved to **Arduino_GFX**.
+The backend is **Arduino_GFX**, which can drive that. The application's drawing
+code, though, targets a ~15-method `TFT_eSPI`-shaped surface —
+`src/Board/TFTCompat.h` presents exactly those methods over Arduino_GFX, so the
+60 KB of view and renderer code compiles unmodified. `include/TFT_eSPI.h` is a
+shim that satisfies the include; the real library is not a dependency.
 
-What did *not* have to change is the ~15-method drawing surface the application
-actually calls. `src/Board/TFTCompat.h` presents those methods over Arduino_GFX,
-so `DisplayUI.cpp` — 60 KB of it — and every view and renderer compile
-**unmodified**. `include/TFT_eSPI.h` is a shim that redirects the original
-include; the real library is not a dependency.
-
-The facade is deliberately narrow. If you call a `TFT_eSPI` method it does not
-implement, the build fails, which is the correct outcome — a silently missing
-draw call is far worse than a compile error.
-
----
+The facade is deliberately narrow. Call a `TFT_eSPI` method it does not
+implement and the build fails, which is the correct outcome — a silently
+missing draw call is far worse than a compile error.
 
 ## Hardware
 
@@ -94,8 +97,6 @@ That same `Simple example` folder drives 5 WS2812s on GPIO48, which is the
 panel's B2 data line in the factory firmware. Both cannot be true, so the
 ambient LEDs are left unclaimed rather than guessed.
 
----
-
 ## Build and flash
 
 Requires [PlatformIO](https://platformio.org/). Everything else is fetched
@@ -125,8 +126,6 @@ is the maintained route to core 3.x.
 The ESP32-S3's native USB re-enumerates on every reset, so a boot loop can make
 `esptool` fail with `Failed to connect: No serial data received`. Hold **BOOT**,
 tap **RESET**, release **BOOT** to force download mode.
-
----
 
 ## Spotify setup
 
@@ -167,18 +166,15 @@ pio run -e crowpanel-21-rotary -t uploadfs
 
 ### Why OAuth runs on the host, not the board
 
-Upstream has the ESP32 run the whole flow: it starts an mDNS responder and a web
-server and registers `http://tp-spotify.local/callback/` as the redirect URI.
+Spotify's redirect-URI rule is HTTPS only, with plain HTTP permitted solely for
+loopback IP literals. An embedded device on the LAN can satisfy neither half —
+it is not loopback, and it cannot terminate TLS for a name it holds no
+certificate for. Any attempt fails at the authorize endpoint with
+`INVALID_CLIENT: Insecure redirect URI`.
 
-**Spotify rejects that now.** Their rule is HTTPS only, with plain HTTP permitted
-solely for loopback IP literals. A `.local` name over HTTP is neither, and the
-authorize endpoint fails it with `INVALID_CLIENT: Insecure redirect URI`.
-
-A LAN device cannot satisfy the rule at all — it is not loopback, and it cannot
-terminate TLS for a name it holds no certificate for. So `tools/get_refresh_token.py`
-runs the exchange on your machine against a loopback redirect and writes the
-refresh token into the filesystem image. The board reads `/refresh-token.txt` at
-boot and never touches a browser.
+So `tools/get_refresh_token.py` runs the exchange on your machine against a
+loopback redirect and writes the refresh token into the filesystem image. The
+board reads `/refresh-token.txt` at boot and never touches a browser.
 
 This only affects the initial exchange. Refreshing an access token does not
 involve the redirect URI, so the board needs nothing further.
@@ -199,8 +195,6 @@ echo | openssl s_client -connect i.scdn.co:443 -servername i.scdn.co 2>/dev/null
   | openssl x509 -noout -issuer
 ```
 
----
-
 ## Controls
 
 | Input | Action |
@@ -214,11 +208,6 @@ echo | openssl s_client -connect i.scdn.co:443 -servername i.scdn.co 2>/dev/null
 Rotation moves a local shadow immediately and pushes to Spotify on a **400 ms
 debounce**. One API write per detent gets the account rate-limited within a
 single flick of the knob.
-
-Volume and resume are additions — upstream was touch-only, so it could pause but
-never resume, and had no volume control at all.
-
----
 
 ## Debugging
 
@@ -249,24 +238,23 @@ If crash reports come back unsymbolized:
   -pfiaC -e .pio/build/crowpanel-21-rotary/firmware.elf 0x42008e45 0x420085bb
 ```
 
----
-
 ## Layout
 
 ```
 src/
-  Board/            new — everything specific to this board
+  Board/            everything specific to this board
     BoardPins.h       pinout, timings, and which vendor source won
     Expander.{h,cpp}  PCF8574: LCD power/reset, touch reset, knob switch
     RoundDisplay.*    ST7701S bring-up, ordering enforced
     Touch.{h,cpp}     CST8xx, reset over the expander, gesture recognition
     Knob.{h,cpp}      encoder by interrupt; switch polled over I2C
     TFTCompat.h       TFT_eSPI-shaped facade over Arduino_GFX
-  DisplayUI.*       upstream, unmodified — draws through TFTCompat
-  UIViews/          upstream, unmodified
-  SpotifyPlayer.*   upstream + volume and play/pause toggle
-  SpotifyArtMgr.*   upstream + the G3 root CA
-  Vault.*           upstream — credential loading
+  Core/             connectivity, time sync, and shared utilities
+  DisplayUI.*       view rendering — draws through TFTCompat
+  UIViews/          the views and their renderers
+  SpotifyPlayer.*   playback state, volume, and the API client
+  SpotifyArtMgr.*   album-art download and cache, pinned root CAs
+  Vault.*           credential loading
 tools/
   get_refresh_token.py   host-side OAuth
 GATES.md            acceptance ledger: what is proven, and by what evidence
@@ -275,19 +263,17 @@ GATES.md            acceptance ledger: what is proven, and by what evidence
 The knob switch is polled, never read from an ISR: it lives on the PCF8574, so
 reading it is an I2C transaction and cannot happen in interrupt context.
 
----
+## Traps that cost real time
 
-## Known defects fixed during the port
-
-Recorded because each was a real trap, and two were latent upstream bugs rather
-than porting mistakes.
+Recorded because each one was invisible until it wasn't.
 
 **Null callback on the first JPEG.** `DisplayUI`'s constructor registered
 `TJpgDec.setCallback()` at static-init time. Both are globals in different
 translation units, so when `TJpgDec` constructed second it zeroed the callback —
 and TJpg_Decoder calls it without a null check. Jump to `0x00000000`, 4.5-second
-reboot loop. Upstream survived on link-order luck; adding the `Board/` globals
-changed the order. Registration moved to `DisplayUI::init()`, at runtime.
+reboot loop. It had always survived on link-order luck; adding the `Board/`
+globals changed the order and the latent bug surfaced. Registration moved to
+`DisplayUI::init()`, at runtime.
 
 **Stale CA bundle.** Album art failed TLS while metadata succeeded, because only
 the image CDN had rotated to a root that was not pinned. See above.
@@ -295,8 +281,6 @@ the image CDN had rotated to a root that was not pinned. See above.
 **Core 3.x transitive includes.** `WiFiClientSecure.h` and `esp_mac.h` used to
 arrive indirectly on core 2.x and must now be named explicitly.
 
----
-
 ## License
 
-MIT, inherited from [ThingPulse/esp32-spotify-remote][upstream].
+MIT — see [LICENSE](LICENSE).

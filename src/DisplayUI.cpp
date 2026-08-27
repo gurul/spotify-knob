@@ -49,9 +49,9 @@
 #include "logTags.h"
 #include "SCLogger.h"
 #include "Monitor.h"
-#include "ThingPulse/util.h"  
+#include "Core/util.h"  
 
-#define FS_TP_LOGO "/ThingPulse-logo-260.jpeg"
+#define FS_BOOT_LOGO "/boot-logo.jpeg"
 
 /*
 ** ===================================================================
@@ -146,8 +146,8 @@ void DisplayUI::init()
    // *called*. The result is a jump to 0x00000000 the first time a JPEG is
    // decoded (InstrFetchProhibited, PC 0x00000000, via drawLogo()).
    //
-   // Upstream got away with it on link-order luck; adding the Board/ globals
-   // for this port changed that order and the latent bug surfaced.
+   // The original code got away with it on link-order luck; adding the
+   // Board/ globals changed that order and the latent bug surfaced.
    TJpgDec.setJpgScale(1);
    TJpgDec.setCallback(DisplayUI::jpgCallback);
 }
@@ -330,10 +330,11 @@ void DisplayUI::drawBmp(String filename, uint16_t x, uint16_t y) {
 ** ===================================================================
 */
 void DisplayUI::drawLogo() {
-  if (LittleFS.exists(FS_TP_LOGO)) {
+  // Draws only if a logo image was uploaded to the filesystem; no-op otherwise.
+  if (LittleFS.exists(FS_BOOT_LOGO)) {
     uint16_t w = 0, h = 0;
-    TJpgDec.getFsJpgSize(&w, &h, FS_TP_LOGO, LittleFS);
-    TJpgDec.drawFsJpg((_tft->width() - w) / 2, 30, FS_TP_LOGO, LittleFS);
+    TJpgDec.getFsJpgSize(&w, &h, FS_BOOT_LOGO, LittleFS);
+    TJpgDec.drawFsJpg((_tft->width() - w) / 2, 30, FS_BOOT_LOGO, LittleFS);
   }
 }
 

@@ -2,7 +2,7 @@
 **
 ** spotify.h
 **
-**    Utility routines from ThingPulse for Spotify integration. This includes
+**    Utility declarations for Spotify integration. This includes
 **    OAuth authentication, certificate setup, and serving a local web
 **    interface to acquire an auth code via redirect URI.
 **
@@ -12,7 +12,7 @@
 ** ------------------------------------------------------------------------------------------------
 ** Change Log:
 **    2024-12-27 - Electric Diversions - Copied and renamed to tpSpotify.h from spotify.h
-**    2025-05-04 - Electric Diversions - Renamed back to spotify.h and moved to ThingPulse folder
+**    2025-05-04 - Electric Diversions - Renamed back to spotify.h and moved to the Core folder
 **    2025-06-07 - Electric Diversions - Refactor to scope SpotifyArduino instance to SpotifyPlayer
 ** ------------------------------------------------------------------------------------------------
 */

@@ -3,7 +3,7 @@
 ** RoundNowPlayingView.h
 **
 **    Circle-native now-playing view for the CrowPanel 2.1" rotary display.
-**    Replaces HomeView as the default view: HomeView's layout is the ThingPulse
+**    Replaces HomeView as the default view: HomeView's layout is the original
 **    480x320 landscape design, which a round 480x480 bezel clips at every
 **    corner and leaves the bottom third of the circle empty.
 **
