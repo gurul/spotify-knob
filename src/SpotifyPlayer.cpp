@@ -392,8 +392,22 @@ void SpotifyPlayer::refreshCurrentTrack()
         // Market can be excluded if you want e.g. spotify.getCurrentlyPlaying()
         int status = -777;
         
-        if (xSemaphoreTake(_xSemaphoreNetwork, portMAX_DELAY)) 
+        if (xSemaphoreTake(_xSemaphoreNetwork, portMAX_DELAY))
         {
+            // `client` is a global WiFiClientSecure reused for every poll, and
+            // WiFiClientSecure::connect() does NOT close a still-open session
+            // before reusing the object. Left alone it logs
+            //   ssl_client.cpp _handle_error(): data_to_read() (-76)
+            //   NetworkClientSecure.cpp available(): Closing connection on
+            //   failed available check
+            // after every single refresh, and a control call landing mid
+            // teardown can fail with a connection reset. Closing it first makes
+            // each poll start from a clean session.
+            //
+            // Independently hit and fixed the same way in KonradIT/espotify
+            // (commit af917b6).
+            client.stop();
+
             spLogI(LOGTAG_MULTITASK, "Invoking spotify.getCurrentlyPlaying(...)");
             Monitor::start(MONITOR_ID_SPOTIFY_GET_CURRENTLY_PLAYING, LOGTAG_METRICS, "spotify.getCurrentlyPlaying(...)");
             status = spotify.getCurrentlyPlaying(SpotifyPlayer::getCurrentlyPlayingCallback, SP_SPOTIFY_MARKET);

@@ -1,146 +1,302 @@
-# Color Kit Grande Spotify Controller
+# Spotify Knob
 
-[![Build Status](https://github.com/ThingPulse/esp32-spotify-remote/actions/workflows/main.yml/badge.svg)](https://github.com/ThingPulse/esp32-spotify-remote/actions)
+A Spotify remote on the **Elecrow CrowPanel 2.1" HMI ESP32 Rotary Display** — a
+480×480 round IPS panel with a capacitive touch overlay and a clicking rotary
+knob, driven by an ESP32-S3.
 
-Spotify controller application for the [ThingPulse Color Kit Grande](https://thingpulse.com/product/esp32-wifi-color-display-kit-grande/).
+Turn the knob for volume, press it for play/pause, swipe the glass to skip.
+Album art, track, artist and progress render on the round face.
 
-<!-- Main image -->
-<a href="./images/HomeView.jpg">
-  <img src="./images/HomeView.jpg" alt="HomeView UI Example" width="600"/>
-</a>
+This is a port of [ThingPulse/esp32-spotify-remote][upstream], which targets
+ThingPulse's own Color Kit Grande. The Spotify half — OAuth, the API client, the
+album-art cache, the view manager — is reused almost unchanged. The display and
+input half is new, because the two boards have nothing in common below the
+drawing API.
 
-<!-- Thumbnails -->
-<p>
-  <a href="./images/CoverArtView.jpg">
-    <img src="./images/CoverArtView.jpg" alt="Cover View" width="200"/>
-  </a>
-  <a href="./images/ClockView.jpg">
-    <img src="./images/ClockView.jpg" alt="Clock View" width="200"/>
-  </a>
-  <a href="./images/DiagnosticView.jpg">
-    <img src="./images/DiagnosticView.jpg" alt="Diagnostic View" width="200"/>
-  </a>
-</p>
+[upstream]: https://github.com/ThingPulse/esp32-spotify-remote
 
-## Purpose of this project
+---
 
-Using the ThingPulse Spotify Controller you control a Spotify player (phone, browser, etc) from an Espressif ESP32 microcontroller.
-Album artwork as well as title and artist name are loaded from the Spotify Web API over WiFi and displayed on a color TFT touch-screen.
-The currently playing song can be paused, resumed and skipped to the next or previous song in the playlist.
+## Why the display layer had to be replaced
 
-A full OAuth 2.0 web flow is used to acquire the necessary access and refresh tokens to permit the user to control the player.
-In order to run this project on your device, you will need to setup an application on your Spotify dashboard (instructions below).
+Upstream drives an **ILI9488 over SPI** through `TFT_eSPI`. The CrowPanel has an
+**ST7701S on a 16-bit RGB parallel bus**. These are not two configurations of one
+thing:
 
- ## Features
+- An SPI display holds its own framebuffer. You send it commands and pixels.
+- An RGB parallel panel holds nothing. The ESP32-S3's LCD peripheral scans a
+  framebuffer out of PSRAM continuously, in real time, and the panel is just a
+  shift register with a timing contract.
 
-- **Spotify Playback Control**
-  - Play, pause, skip to next/previous track from the touch screen. ⚠️ Spotify requires a premium account for this!
-  - Control playback on any active Spotify Connect device linked to your account (e.g., phone, browser, smart speaker)
+`TFT_eSPI` cannot address that at all, so the backend moved to **Arduino_GFX**.
 
-- **Album Art Display**
-  - Downloads and displays album artwork via Spotify Web API
-  - Syncs background color with album art
-  - Caches artwork locally for performance
+What did *not* have to change is the ~15-method drawing surface the application
+actually calls. `src/Board/TFTCompat.h` presents those methods over Arduino_GFX,
+so `DisplayUI.cpp` — 60 KB of it — and every view and renderer compile
+**unmodified**. `include/TFT_eSPI.h` is a shim that redirects the original
+include; the real library is not a dependency.
 
-- **Multiple UI Modes**
-  - Home view with track metadata and album art
-  - Cover Art only view
-  - Clock view with time and playback progress
-  - Supports 12-hour and 24-hour time formats
-  - Diagnostics view with system stats and Spotify state
+The facade is deliberately narrow. If you call a `TFT_eSPI` method it does not
+implement, the build fails, which is the correct outcome — a silently missing
+draw call is far worse than a compile error.
 
-- **OAuth 2.0 Authorization Flow**
-  - Authentication and authorization (OAuth 2.0 flow) on device
+---
 
-- **Designed for ESP32 + TFT Touch**
-  - Built using PlatformIO and Arduino
-  - Touch event handling for UI buttons and screen navigation
-  - Takes advantage of ESP32 dual-core architecture: UI logic runs on one core and background song and album art refreshing runs on the other
+## Hardware
 
-- **Extensible Design**
-  - Modular architecture allows easy addition of new Views (UI screens)
-  - Built-in monitoring tools for measuring system performance and UI responsiveness
-  - Structured and tag-based logging system for easier debugging and analysis
-  - Optional `user.ini` file for easy credential and time zone management
+Every value below is transcribed from Elecrow's **factory firmware**
+(`factory_soucecode/ESP32_Display_2_1-1`) or their **ESPHome config**, and the
+ones marked ✔ have been confirmed on the physical board.
 
+| Item | Value |
+|---|---|
+| MCU | ESP32-S3-N16R8 — 16 MB flash, 8 MB **octal** PSRAM ✔ |
+| Panel | ST7701S, 480×480 round, RGB parallel 16-bit |
+| RGB bus | CS 16, SCK 2, SDA 1, DE 40, VSYNC 7, HSYNC 15, PCLK 41 |
+| RGB data | R 46/3/8/18/17 · G 14/13/12/11/10/9 · B 5/45/48/47/21 |
+| Timing | hsync 20/10/10, vsync 8/10/10, 18 MHz pclk, inverted |
+| I2C | SDA 38, SCL 39 ✔ |
+| I/O expander | **PCF8574 @ 0x21** ✔ — P0 touch RST, P2 touch INT, P3 LCD power, P4 LCD reset, P5 encoder switch |
+| Touch | CST8xx @ **0x15** ✔ |
+| Encoder | A = GPIO42, B = GPIO4 ✔ (the switch is on the expander, **not** a GPIO) |
+| Backlight | GPIO6, LEDC PWM ✔ |
+| Enclosure | 79.00 mm ⌀ × 33.42 mm deep (from Elecrow's STEP file) |
 
-<!--Design Context Diagram -->
-<a href="./documentation/SCDesign.jpg">
-  <img src="./documentation/SCDesign.jpg" alt="Design" width="600"/>
-</a>
+### The expander is load-bearing
 
-## Using the Spotify Controller
+LCD power and LCD reset both hang off the PCF8574. **The panel cannot be brought
+up over GPIO alone.** I2C and the expander must be alive before the RGB bus is
+touched; `RoundDisplay::begin()` enforces that order. Getting it wrong yields a
+dark panel and no error message.
 
-- Tap the **Prev**, **Pause/Play**, and **Next** buttons to control music playback.
-- Tap the **album art** on the Home view to switch to the **Cover Art view**.
-- Tap the **clock** to switch to the **Clock view**.
-- Tap the **network status box** in the lower-right corner to open the **Diagnostics view**.
-- Tap the top-left corner for **Prev**, the top-center for **Pause/Play**, and the top-right for **Next** when using views other than Home.
+The PCF8574 has no direction register — every pin is quasi-bidirectional, and
+writing a 1 is also how you read a pin. `Expander` therefore keeps a shadow byte
+and forces every input pin high on each write. Without that, the first write
+after a read drives the encoder switch low and it reads as pressed forever.
 
-> For detailed display logic and diagnostics layout, see `DiagnosticsView.cpp`.
+### Vendor sources contradict each other
 
-## Service level promise
+Three Elecrow sources disagree on the encoder pinout, and two disagree on panel
+timings. Resolved on hardware:
 
-<table><tr><td><img src="https://thingpulse.com/assets/ThingPulse-open-source-community.png" width="150">
-</td><td>This is a ThingPulse <em>community</em> project. See our <a href="https://thingpulse.com/about/open-source-commitment/">open-source commitment declaration</a> for what this means.</td></tr></table>
+| Source | Encoder claim | Verdict |
+|---|---|---|
+| Factory firmware | A=42, B=4, SW on PCF8574 P5 | **correct** ✔ |
+| Elecrow wiki | B=44 | wrong |
+| `Simple example/Encoder_code` | A=45, B=42, SW=41 | wrong |
 
-## Setup instructions
+For **panel timings the factory firmware is the wrong source** — its values
+produce a sheared image, and its own comments contradict its literals
+(`4 /* hsync_pulse_width(8) */`). The working numbers come from Elecrow's
+ESPHome config. `src/Board/BoardPins.h` records which source won and why.
 
-### Precondition
+That same `Simple example` folder drives 5 WS2812s on GPIO48, which is the
+panel's B2 data line in the factory firmware. Both cannot be true, so the
+ambient LEDs are left unclaimed rather than guessed.
 
-The below instructions assume a properly configured Visual Studio Code installation with PlatformIO.
-See our [instructions](https://docs.thingpulse.com/guides/esp32-color-kit-grande/#development-environment) if you need help with this.
+---
 
-### Get access to the Spotify API
+## Build and flash
 
-1. Go to [https://developer.spotify.com/dashboard/login](https://developer.spotify.com/dashboard/login) and login to or sign up for the Spotify Developer Dashboard
+Requires [PlatformIO](https://platformio.org/). Everything else is fetched
+automatically.
 
-2. Select "Create app"
+```bash
+pio run -e crowpanel-21-rotary                  # build
+pio run -e crowpanel-21-rotary -t uploadfs      # filesystem: credentials + art cache
+pio run -e crowpanel-21-rotary -t upload        # firmware
+```
 
-   <img src="./images/SpotifyDashboard.png" width="400">
+Run `uploadfs` and `upload` as **separate** commands. Combining targets in one
+invocation confuses PlatformIO's dependency finder and the build fails looking
+for `SPI.h`.
 
-3. Fill out the form. Give your new app a name you can attribute to this project.
-It's safe to select "I don't know" for the type of application.
-Add "http://tp-spotify.local/callback/" to the Redirect URIs section.
+### The platform is pinned to a fork, on purpose
 
-   **NOTE** If you are running more than ThingPulse Spotify Remote in the same WiFi network, you should choose a unique name rather than "tp-spotify". Regardless of what you choose it has to reflect what you set for `SPOTIFY_ESPOTIFIER_NODE_NAME` in `spotify.h` in the project.
+`platformio.ini` uses [pioarduino][pio] rather than the official `espressif32`
+platform. The official platform tops out at Arduino core 2.0.17, which has no
+`esp32-hal-periman.h`; Arduino_GFX 1.6.7 will not compile against it. pioarduino
+is the maintained route to core 3.x.
 
-   <img src="./images/SpotifyCreateApp.png" width="400">
+[pio]: https://github.com/pioarduino/platform-espressif32
 
-   **Don't forget to save your settings.**
+### Flashing while the board is crash-looping
 
-4. Set the unique Client ID and Client Secret as values for the respective variables in `src/spotify.h`.
+The ESP32-S3's native USB re-enumerates on every reset, so a boot loop can make
+`esptool` fail with `Failed to connect: No serial data received`. Hold **BOOT**,
+tap **RESET**, release **BOOT** to force download mode.
 
-   <img src="./images/SpotifyClientId.png" width="400">
+---
 
-### Filesystem setup
+## Spotify setup
 
-5. Upload the file system to the device
+You need a **Spotify Premium** account. Playback control is Premium-only; a free
+account can read now-playing but cannot skip, pause, or set volume.
 
-- Hit the PlatformIO icon on the navigation bar on the left side (alien face).
+**1. Create an app** at the [Spotify Developer Dashboard][dash]. Enable **Web
+API** only. Set the Redirect URI to exactly:
 
-- Select the Platform > Upload Filesystem Image task.  Unless you later erase the flash or modify certain files, you only need to do this once if it succeeds. Pay attention to the output in the VS Code console that opens. If it reports any errors like e.g. if it cannot connect to the board or if stops midway, close VS Code completely, restart it, and then repeat the process.
+```
+http://127.0.0.1:8888/callback
+```
 
- <img src="./images/platformio-filesystem.png" width="400">
+**2. Put the credentials in `data/user.ini`** (gitignored, never committed):
 
-- If startup fails with the following message displayed: "FATAL ERROR - Filesystem Not Initialized", this step was not successful or done.
+```ini
+[wifi]
+ssid = your-network
+password = your-password
 
-### User settings
+[spotify]
+client_id = ...
+client_secret = ...
 
-6. The fastest way to get up and running is to open the `src/settings.h` file and adjust the handful of configuration parameters in the "User settings" section at the top. They are all documented inside the file directly. Everything should be self-explanatory.  The spotify settings were updated in step 4 above.
+[system]
+timezone = PST8PDT,M3.2.0,M11.1.0
+ui_date_time_format = us
+```
 
- <img src="./images/UserSettings.png" width="400">
+**3. Get a refresh token**, then upload the filesystem:
 
-See [full user settings documentation](./documentation/UserSettings.md) for details about all available fields, encryption options, and using `user.ini`.
+```bash
+python3 tools/get_refresh_token.py
+pio run -e crowpanel-21-rotary -t uploadfs
+```
 
- ### Upload code to device
+[dash]: https://developer.spotify.com/dashboard
 
- 7. Select the General > Upload and Monitor task. You do this every time you change code or settings.h.
+### Why OAuth runs on the host, not the board
 
-  <img src="./images/platformio-task-upload.png" width="400">
+Upstream has the ESP32 run the whole flow: it starts an mDNS responder and a web
+server and registers `http://tp-spotify.local/callback/` as the redirect URI.
 
-See [instructions](https://docs.thingpulse.com/guides/esp32-color-kit-grande/#development-environment) if you encounter problems and need Trouble Shooting tips.
+**Spotify rejects that now.** Their rule is HTTPS only, with plain HTTP permitted
+solely for loopback IP literals. A `.local` name over HTTP is neither, and the
+authorize endpoint fails it with `INVALID_CLIENT: Insecure redirect URI`.
 
-## Tips and Known Issues
+A LAN device cannot satisfy the rule at all — it is not loopback, and it cannot
+terminate TLS for a name it holds no certificate for. So `tools/get_refresh_token.py`
+runs the exchange on your machine against a loopback redirect and writes the
+refresh token into the filesystem image. The board reads `/refresh-token.txt` at
+boot and never touches a browser.
 
-To see a list of tips and known issues, see [Tips and Known Issues](./documentation/TipsAndKnownIssues.md).
+This only affects the initial exchange. Refreshing an access token does not
+involve the redirect URI, so the board needs nothing further.
+
+### Certificate pinning
+
+The firmware pins root CAs rather than trusting a store. `api.spotify.com` chains
+to **DigiCert Global Root G2**; the album-art CDN `i.scdn.co` chains to
+**DigiCert Global Root G3** (ECC). Both are in `gCombinedCerts`
+(`src/SpotifyArtMgr.cpp`).
+
+If album art stops downloading while metadata still works, suspect this first —
+that asymmetry is the signature of a CA rotation on the image CDN alone. Check
+what the chain actually uses:
+
+```bash
+echo | openssl s_client -connect i.scdn.co:443 -servername i.scdn.co 2>/dev/null \
+  | openssl x509 -noout -issuer
+```
+
+---
+
+## Controls
+
+| Input | Action |
+|---|---|
+| Rotate knob | Volume, 2% per detent |
+| Press knob | Play / pause |
+| Hold knob | Re-read volume from the active device |
+| Swipe left / right | Next / previous track |
+| Tap | View-specific |
+
+Rotation moves a local shadow immediately and pushes to Spotify on a **400 ms
+debounce**. One API write per detent gets the account rate-limited within a
+single flick of the knob.
+
+Volume and resume are additions — upstream was touch-only, so it could pause but
+never resume, and had no volume control at all.
+
+---
+
+## Debugging
+
+Serial work goes through [`hwlog`][hwlog], which owns the port so a monitor never
+fights a flash:
+
+```bash
+hwlog ports                                     # identify the board
+hwlog start -p /dev/cu.usbmodem11301
+hwlog flash -- pio run -e crowpanel-21-rotary -t upload
+hwlog logs --boot -1 --tail 50
+hwlog boots                                     # reboot loops are obvious here
+hwlog crashes --last
+```
+
+[hwlog]: https://github.com/gurul/hardware-logging
+
+`hwlog boots` earns its keep: a 4.5-second crash loop looks like ordinary
+scrolling noise on a raw monitor, but shows up immediately as twelve boots with
+twelve crashes.
+
+### Decoding a backtrace by hand
+
+If crash reports come back unsymbolized:
+
+```bash
+~/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32s3-elf-addr2line \
+  -pfiaC -e .pio/build/crowpanel-21-rotary/firmware.elf 0x42008e45 0x420085bb
+```
+
+---
+
+## Layout
+
+```
+src/
+  Board/            new — everything specific to this board
+    BoardPins.h       pinout, timings, and which vendor source won
+    Expander.{h,cpp}  PCF8574: LCD power/reset, touch reset, knob switch
+    RoundDisplay.*    ST7701S bring-up, ordering enforced
+    Touch.{h,cpp}     CST8xx, reset over the expander, gesture recognition
+    Knob.{h,cpp}      encoder by interrupt; switch polled over I2C
+    TFTCompat.h       TFT_eSPI-shaped facade over Arduino_GFX
+  DisplayUI.*       upstream, unmodified — draws through TFTCompat
+  UIViews/          upstream, unmodified
+  SpotifyPlayer.*   upstream + volume and play/pause toggle
+  SpotifyArtMgr.*   upstream + the G3 root CA
+  Vault.*           upstream — credential loading
+tools/
+  get_refresh_token.py   host-side OAuth
+GATES.md            acceptance ledger: what is proven, and by what evidence
+```
+
+The knob switch is polled, never read from an ISR: it lives on the PCF8574, so
+reading it is an I2C transaction and cannot happen in interrupt context.
+
+---
+
+## Known defects fixed during the port
+
+Recorded because each was a real trap, and two were latent upstream bugs rather
+than porting mistakes.
+
+**Null callback on the first JPEG.** `DisplayUI`'s constructor registered
+`TJpgDec.setCallback()` at static-init time. Both are globals in different
+translation units, so when `TJpgDec` constructed second it zeroed the callback —
+and TJpg_Decoder calls it without a null check. Jump to `0x00000000`, 4.5-second
+reboot loop. Upstream survived on link-order luck; adding the `Board/` globals
+changed the order. Registration moved to `DisplayUI::init()`, at runtime.
+
+**Stale CA bundle.** Album art failed TLS while metadata succeeded, because only
+the image CDN had rotated to a root that was not pinned. See above.
+
+**Core 3.x transitive includes.** `WiFiClientSecure.h` and `esp_mac.h` used to
+arrive indirectly on core 2.x and must now be named explicitly.
+
+---
+
+## License
+
+MIT, inherited from [ThingPulse/esp32-spotify-remote][upstream].
