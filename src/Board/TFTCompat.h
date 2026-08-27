@@ -130,6 +130,14 @@ public:
     if (_gfx) _gfx->fillTriangle(x0, y0, x1, y1, x2, y2, color);
   }
 
+  /// Not a TFT_eSPI method — Arduino_GFX's annular arc, exposed for the round
+  /// UI's perimeter progress/volume ring. Angles in degrees; 270 is 12 o'clock
+  /// and increasing angles sweep clockwise on screen.
+  void fillArc(int32_t x, int32_t y, int32_t r1, int32_t r2,
+               float start, float end, uint16_t color) {
+    if (_gfx) _gfx->fillArc(x, y, r1, r2, start, end, color);
+  }
+
   /// Blits a 16-bit bitmap. Honours the swap-bytes flag set above.
   void pushImage(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t *data) {
     if (_gfx == nullptr) {

@@ -17,6 +17,7 @@
 
 
 #include "UIViewManager.h"
+#include "RoundNowPlayingView.h"
 #include "CoverView.h"
 #include "HomeView.h"
 #include "DiagnosticsView.h"
@@ -190,7 +191,10 @@ bool UIViewManager::exitView()
 void UIViewManager::initializeViews(DisplayUI *pUI)
 {
     _views = {
-        std::make_unique<HomeView>(pUI),
+        // CrowPanel port: the Home slot is the circle-native view. HomeView is
+        // the ThingPulse 480x320 landscape layout, which the round bezel clips
+        // at every corner; it remains in the tree but is no longer reachable.
+        std::make_unique<RoundNowPlayingView>(pUI),
         std::make_unique<CoverView>(pUI),
         std::make_unique<DiagnosticsView>(pUI),
         std::make_unique<ClockView>(pUI)

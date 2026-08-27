@@ -163,8 +163,14 @@ public:
 
     void drawClockTime(bool isUSFormat, bool isForceRepaint);
 
+    // CrowPanel port: annular arc for the round UI's perimeter ring. Same
+    // angle convention as Arduino_GFX — 270 degrees is 12 o'clock, increasing
+    // angles sweep clockwise. Thread-safe like every other draw method here.
+    void fillArc(int32_t x, int32_t y, int32_t r1, int32_t r2,
+                 float startDeg, float endDeg, TFTColor color);
+
     void showTouchDown(TFTColor color = TFTColor::SC_TouchDown);
-    void showTouchUp(); 
+    void showTouchUp();
 
     bool pushImageToTft(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap);
 

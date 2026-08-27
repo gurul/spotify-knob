@@ -30,7 +30,8 @@ enum class SCUIMessageType
     UM_DOWNLOAD_BOX,
     UM_MARK_DIRTY,
     UM_IDLE,
-    UM_PLAYER_REFRESH
+    UM_PLAYER_REFRESH,
+    UM_VOLUME          // CrowPanel port: knob moved; num carries the new 0-100
 };
 
 // Structure for a UI message

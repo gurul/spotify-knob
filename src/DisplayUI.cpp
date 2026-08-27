@@ -1884,3 +1884,26 @@ void DisplayUI::hsvToRgb(float h, float s, float v, uint8_t& r, uint8_t& g, uint
     g = static_cast<uint8_t>((fg + m) * 255);
     b = static_cast<uint8_t>((fb + m) * 255);
 }
+
+/*
+** ===================================================================
+** fillArc()  — CrowPanel port addition
+**
+**    Annular arc for the round UI's perimeter ring. Angle convention
+**    matches Arduino_GFX: 270 degrees is 12 o'clock and increasing
+**    angles sweep clockwise on screen.
+** ===================================================================
+*/
+void DisplayUI::fillArc(int32_t x, int32_t y, int32_t r1, int32_t r2,
+                        float startDeg, float endDeg, TFTColor color)
+{
+    if (xSemaphoreTake(xSemaphoreDisplay, portMAX_DELAY))
+    {
+        _tft->fillArc(x, y, r1, r2, startDeg, endDeg, toValue(color));
+        xSemaphoreGive(xSemaphoreDisplay);
+    }
+    else
+    {
+        spLogI(LOGTAG_MULTITASK, "Unable to take xSemaphoreDisplay in fillArc().");
+    }
+}

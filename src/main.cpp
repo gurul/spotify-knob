@@ -656,7 +656,13 @@ void initBoard()
 
     // Hand the live panel to the TFT_eSPI-shaped facade the drawing code uses.
     tft.attach(display.gfx());
-    tft.setSwapBytes(true);   // TJpg_Decoder emits big-endian RGB565
+    // NO byte swap. TJpg_Decoder emits native-endian RGB565 words; TFT_eSPI
+    // needed swapBytes(true) only because SPI transmits the high byte first.
+    // This panel scans a memory framebuffer, where words land native — with
+    // the swap on, album art renders as blue-shifted noise (every pixel's
+    // bytes reversed) while rect/text drawing stays correct, which is exactly
+    // the asymmetry that gave this bug away.
+    tft.setSwapBytes(false);
 
     if (touch.begin())
     {
@@ -708,12 +714,13 @@ void handleKnobInput()
                 spLogD(LOGTAG_INPUT, "KNOB dir=%+d volume=%d",
                        (ev.delta > 0) ? 1 : -1, vol);
 
-                // Repaint now so the knob feels attached to the screen rather
-                // than to the network.
+                // Tell the active view so it can show the volume overlay
+                // immediately — the knob must feel attached to the screen,
+                // not to the network.
                 SCUIMessage msg;
-                msg.type = SCUIMessageType::UM_MARK_DIRTY;
+                msg.type = SCUIMessageType::UM_VOLUME;
                 msg.str  = "";
-                msg.num  = true;
+                msg.num  = vol;
                 xQueueSend(scuiQueue, &msg, 0);
                 break;
             }
