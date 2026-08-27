@@ -21,6 +21,7 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 // ---------------------------------------------------------------------------
@@ -57,32 +58,50 @@ static constexpr int8_t LCD_B0 = 5,  LCD_B1 = 45, LCD_B2 = 48, LCD_B3 = 47, LCD_
 
 // Panel timing.
 //
-// Source: Elecrow's own ESPHome config for this board
-// (example/esphome/*.yaml, platform: st7701s). Their Arduino factory sketch
-// disagrees on every one of these values and produces a SHEARED image on real
-// hardware — two diagonal bars on a dark field — because the total horizontal
-// period does not match what the panel clocks out. The ESPHome numbers are the
-// ones that actually work.
+// SOURCE OF TRUTH: example/Arduino/RotaryScreen_2_1/RotaryScreen_2_1.ino in
+// Elecrow's repo for this exact board. That file uses the SAME modern
+// Arduino_GFX API this firmware uses, against a bundled copy of Arduino_GFX
+// that is byte-identical to the 1.6.7 we build against. It is a reference
+// implementation on an identical stack, not merely prior art.
 //
-// Rejected (Elecrow Arduino sketch): h 10/4/20, v 10/4/20. Its own inline
-// comments contradicted its literals, e.g. `4 /* hsync_pulse_width(8) */`,
-// which is a fair warning that the file was never the reference.
+// Two earlier attempts, both wrong, recorded so they are not retried:
 //
-// The ST7701 fails soft: wrong porches give a torn or rolling picture, never an
-// error. Do not tune these by feel.
-static constexpr uint16_t LCD_HSYNC_FRONT_PORCH = 20;
-static constexpr uint16_t LCD_HSYNC_PULSE_WIDTH = 10;
-static constexpr uint16_t LCD_HSYNC_BACK_PORCH  = 10;
-static constexpr uint16_t LCD_VSYNC_FRONT_PORCH = 8;
-static constexpr uint16_t LCD_VSYNC_PULSE_WIDTH = 10;
-static constexpr uint16_t LCD_VSYNC_BACK_PORCH  = 10;
+//   1. factory_soucecode/ESP32_Display_2_1-1 — the porches below are right,
+//      but it drives an older API and says nothing about polarity, clock or
+//      bounce buffers. Sheared image.
+//   2. example/esphome/*.yaml — h 20/10/10, v 8/10/10, 18MHz, pclk inverted.
+//      Also sheared. ESPHome's st7701s component derives its peripheral
+//      config differently, so its numbers do NOT transfer to Arduino_GFX.
+//      Do not copy timings across driver stacks.
+//
+// The ST7701 fails soft: wrong values tear or shear the picture and never
+// report an error. Do not tune these by feel.
+static constexpr uint16_t LCD_HSYNC_FRONT_PORCH = 10;
+static constexpr uint16_t LCD_HSYNC_PULSE_WIDTH = 4;
+static constexpr uint16_t LCD_HSYNC_BACK_PORCH  = 20;
+static constexpr uint16_t LCD_VSYNC_FRONT_PORCH = 10;
+static constexpr uint16_t LCD_VSYNC_PULSE_WIDTH = 4;
+static constexpr uint16_t LCD_VSYNC_BACK_PORCH  = 20;
 
-// Pixel clock. 18 MHz with an inverted (falling-edge) clock, per the same
-// ESPHome config (`pclk_frequency: 18MHz`, `pclk_inverted: true`). Leaving the
-// library default here is itself a bug: it picks a speed this panel does not
-// latch cleanly.
-static constexpr int32_t  LCD_PCLK_HZ         = 18000000;
-static constexpr uint16_t LCD_PCLK_ACTIVE_NEG = 1;
+// Sync polarity. Arduino_GFX INVERTS this on the way to ESP-IDF:
+// Arduino_ESP32RGBPanel.cpp sets `hsync_idle_low = (hsync_polarity == 0)`.
+// Passing 0 therefore makes sync idle LOW, which no working configuration for
+// this panel does. The reference passes 1.
+static constexpr uint16_t LCD_HSYNC_POLARITY = 1;
+static constexpr uint16_t LCD_VSYNC_POLARITY = 1;
+
+// Pixel clock: 12 MHz on the rising edge.
+static constexpr int32_t  LCD_PCLK_HZ         = 12000000;
+static constexpr uint16_t LCD_PCLK_ACTIVE_NEG = 0;
+
+// DMA bounce buffers — two, 20 lines each.
+//
+// With 0 (the library default) the LCD GDMA fetches every pixel straight from
+// PSRAM. The Arduino build here has CONFIG_LCD_RGB_RESTART_IN_VSYNC=y, so a
+// missed DMA deadline makes the scanline pointer slip and then re-zero at each
+// VSYNC — which renders as a STABLE diagonal shear rather than random flicker.
+// That is exactly the artefact this board showed.
+static constexpr size_t LCD_BOUNCE_BUFFER_PX = PANEL_WIDTH * 20;
 
 // ---------------------------------------------------------------------------
 // Backlight — LEDC PWM

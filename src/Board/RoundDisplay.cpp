@@ -41,10 +41,14 @@ bool RoundDisplay::begin() {
       LCD_R0, LCD_R1, LCD_R2, LCD_R3, LCD_R4,
       LCD_G0, LCD_G1, LCD_G2, LCD_G3, LCD_G4, LCD_G5,
       LCD_B0, LCD_B1, LCD_B2, LCD_B3, LCD_B4,
-      0 /* hsync_polarity */, LCD_HSYNC_FRONT_PORCH, LCD_HSYNC_PULSE_WIDTH, LCD_HSYNC_BACK_PORCH,
-      0 /* vsync_polarity */, LCD_VSYNC_FRONT_PORCH, LCD_VSYNC_PULSE_WIDTH, LCD_VSYNC_BACK_PORCH,
+      LCD_HSYNC_POLARITY, LCD_HSYNC_FRONT_PORCH, LCD_HSYNC_PULSE_WIDTH, LCD_HSYNC_BACK_PORCH,
+      LCD_VSYNC_POLARITY, LCD_VSYNC_FRONT_PORCH, LCD_VSYNC_PULSE_WIDTH, LCD_VSYNC_BACK_PORCH,
       LCD_PCLK_ACTIVE_NEG,
-      LCD_PCLK_HZ);
+      LCD_PCLK_HZ,
+      false /* useBigEndian */,
+      0 /* de_idle_high */,
+      0 /* pclk_idle_high */,
+      LCD_BOUNCE_BUFFER_PX);
 
   if (_swspi == nullptr || _bus == nullptr) {
     log_e("RGB bus allocation failed");
