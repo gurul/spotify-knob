@@ -35,11 +35,18 @@ OUT = os.path.join(HERE, "export")
 os.makedirs(OUT, exist_ok=True)
 
 # ---- device, measured ------------------------------------------------------
-BODY_DIA   = 79.00   # fixed lower band diameter              CAL-PENDING recheck
-BAND_H     = 12.5    # fixed band height before rotating seam CAL-PENDING
-BOSS_DIA   = 48.00   # widest rear boss                       CAL-PENDING
-BOSS_DEPTH = 19.5    # boss protrusion from the back face     CAL-PENDING
-CABLE_W    = 15.0    # USB plug + strain relief width         CAL-PENDING
+# Caliper session 2026-08-26. The owner's #1 reading (47.87) matches the rear
+# boss, not the front disc — the disc cannot be 47.87 (the 2.1" glass alone is
+# ~53mm) and three independent sources put it at 79.0 (Elecrow STEP, mat-photo
+# measurement, an Amazon reviewer's calipers). Bore stays 79.0-based; the
+# first print's fit is the final arbiter.
+BODY_DIA   = 79.00   # front disc — STEP + photo + reviewer agree; not re-measured
+BAND_H     = 12.5    # CALIPER 2026-08-26 — matches STEP prediction exactly
+BOSS_DIA   = 47.87   # CALIPER 2026-08-26 (STEP said 48.00)
+BOSS_DEPTH = 19.5    # kept at STEP worst case; caliper read 11.93, but the
+                     # cavity is a through-tunnel so extra depth is free
+                     # clearance and under-depth is the only failure mode
+CABLE_W    = 12.0    # CALIPER: plug is 9.03 wide; +3 routing slack
 
 # ---- fit -------------------------------------------------------------------
 BORE_CLR   = 0.35    # radial clearance (printed gauge ring refines this)
