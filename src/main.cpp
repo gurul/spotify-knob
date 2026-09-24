@@ -749,8 +749,11 @@ void handleKnobInput()
                 break;
 
             case KnobEventType::LongPress:
-                spLogI(LOGTAG_INPUT, "KNOB longpress — reseeding volume");
-                spotifyPlayer.refreshVolumeFromDevice();
+                // Handed to the background task: blocking here stopped the
+                // switch being sampled, so the 1.5 s hold that opens the device
+                // picker was never seen (2026-09-23).
+                spLogI(LOGTAG_INPUT, "KNOB longpress — volume re-seed requested");
+                spotifyPlayer.requestVolumeRefresh();
                 break;
 
             case KnobEventType::VeryLongPress:

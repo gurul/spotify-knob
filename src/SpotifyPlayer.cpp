@@ -811,20 +811,38 @@ void SpotifyPlayer::refreshCurrentSongTask(void *pvParameters)
 
     // TODO: work this out better so it just simply starts when ready
     vTaskDelay(pdMS_TO_TICKS(2000)); // 2000 ms delay to get started and wait for everything to process
+    SpotifyPlayer &player = SpotifyPlayer::getInstance();
+
+    // A volume re-seed asked for by the knob's long press is served here, on
+    // the task that already owns the network, never on the UI loop.
+    auto serveRequests = [&player]() {
+        if (player._volumeRefreshRequested) {
+            player._volumeRefreshRequested = false;
+            player.refreshVolumeFromDevice();
+        }
+    };
+    // Waits in short slices so a request is served within ~100 ms of asking.
+    auto waitServing = [&serveRequests](uint32_t ms) {
+        for (uint32_t waited = 0; waited < ms; waited += 100) {
+            serveRequests();
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+    };
+
     while (true) {
         spLogI(LOGTAG_MULTITASK, "refreshCurrentSongTask is running");
 
         // Perform the task (blocking HTTP call)
-        SpotifyPlayer::getInstance().refreshCurrentTrack();
+        player.refreshCurrentTrack();
 
         // Give the UI time to refresh since might be marked dirty
         // Also give time for other tasks to do work.
-        vTaskDelay(pdMS_TO_TICKS(1500)); 
+        waitServing(1500);
 
-        SpotifyPlayer::getInstance().saveCache();
+        player.saveCache();
 
         // Allow other tasks to execute
-        vTaskDelay(pdMS_TO_TICKS(500));
+        waitServing(500);
     }
 }
 

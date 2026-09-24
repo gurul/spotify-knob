@@ -67,6 +67,11 @@ public:
     /// Seeds the volume shadow from the active device. Safe to call repeatedly.
     void   refreshVolumeFromDevice();
 
+    /// Asks the background task to re-seed the volume. Returns at once: the UI
+    /// loop is also the only reader of the knob switch, so it must never block
+    /// on the network (a blocking re-seed at 0.6 s swallowed the 1.5 s hold).
+    void   requestVolumeRefresh() { _volumeRefreshRequested = true; }
+
     // ---- playback-device switching ------------------------------------------
 
     /// GET /v1/me/player/devices into picker (clears it first). Returns the
@@ -110,6 +115,7 @@ private:
     int                 _volumePercent      = -1;     // -1 = not yet seeded
     int                 _pendingVolume      = -1;     // -1 = nothing to push
     uint32_t            _volumeDirtyAtMs    = 0;
+    volatile bool       _volumeRefreshRequested = false;   // set by the UI loop, served by the background task
     static constexpr uint32_t VOLUME_DEBOUNCE_MS = 400;
 
     // Methods
