@@ -181,19 +181,54 @@ involve the redirect URI, so the board needs nothing further.
 
 ### Certificate pinning
 
-The firmware pins root CAs rather than trusting a store. `api.spotify.com` chains
-to **DigiCert Global Root G2**; the album-art CDN `i.scdn.co` chains to
-**DigiCert Global Root G3** (ECC). Both are in `gCombinedCerts`
-(`src/SpotifyArtMgr.cpp`).
+The firmware pins root CAs rather than trusting a store. There are two bundles:
 
-If album art stops downloading while metadata still works, suspect this first —
-that asymmetry is the signature of a CA rotation on the image CDN alone. Check
-what the chain actually uses:
+| Host | Root | Bundle |
+|---|---|---|
+| `api.spotify.com` | DigiCert Global Root G2 | `spotify_api_root_certs` (`src/Core/spotify.h`) |
+| `accounts.spotify.com` | Starfield Root Certificate Authority - G2, via Certainly Intermediate R1 | `spotify_api_root_certs` |
+| `i.scdn.co` (album art) | DigiCert Global Root G3 (ECC) | `gCombinedCerts` (`src/SpotifyArtMgr.cpp`) |
+
+`api` and `accounts` share one TLS client, so they share one bundle. Keep every
+root in it: Spotify rotates CAs per host, and the bundle is what survives that.
+
+Each host fails in its own way when its CA rotates:
+
+- **`accounts`** — the access-token refresh fails with
+  `(-9984) X509 - Certificate verification failed`, and the log shows
+  `Spotify: token refresh POST accounts.spotify.com/api/token -> -1`. The knob
+  then sits on "Waiting for music" although the API is healthy. This happened
+  on 2026-09-23, when `accounts` moved to the Starfield chain.
+- **`i.scdn.co`** — album art stops downloading while metadata still works.
+
+Check which root a host chains to now:
 
 ```bash
 echo | openssl s_client -connect i.scdn.co:443 -servername i.scdn.co 2>/dev/null \
   | openssl x509 -noout -issuer
 ```
+
+To test a bundle, use a real OpenSSL with the system store switched off.
+macOS's LibreSSL falls back to the keychain even with `-CAfile`, so it reports
+success for roots the board does not have:
+
+```bash
+/opt/homebrew/opt/openssl@3/bin/openssl s_client -connect accounts.spotify.com:443 \
+  -servername accounts.spotify.com -no-CApath -no-CAstore -CAfile bundle.pem </dev/null \
+  | grep "Verify return"
+```
+
+### Nothing secret reaches the serial log
+
+The Spotify client library is vendored in `lib/SpotifyArduino` (from
+[witnessmenow/spotify-api-arduino][spotlib] at `6261278`) rather than fetched.
+Upstream hard-defines `SPOTIFY_DEBUG`, and in that mode it prints the whole
+token request body, refresh token and client secret included, on every
+refresh. The vendored copy has debug output off. It never prints request
+bodies, headers or tokens, only the host, path and status: every token
+refresh, plus any request that did not return 2xx.
+
+[spotlib]: https://github.com/witnessmenow/spotify-api-arduino
 
 ## Controls
 

@@ -94,6 +94,14 @@ int SpotifyArduino::makeRequestWithBody(const char *type, const char *command, c
     }
 
     int statusCode = getHttpStatusCode();
+#ifdef SPOTIFY_SERIAL_OUTPUT
+    // spotKnob: host, path and status only. Never the body or headers,
+    // which carry tokens and the client secret.
+    if (statusCode < 200 || statusCode >= 300)
+    {
+        Serial.printf("Spotify: %s%s%s -> %d\n", type, host, command, statusCode);
+    }
+#endif
     return statusCode;
 }
 
@@ -154,6 +162,13 @@ int SpotifyArduino::makeGetRequest(const char *command, const char *authorizatio
     }
 
     int statusCode = getHttpStatusCode();
+#ifdef SPOTIFY_SERIAL_OUTPUT
+    // spotKnob: host, path and status only (see makeRequestWithBody()).
+    if (statusCode < 200 || statusCode >= 300)
+    {
+        Serial.printf("Spotify: GET %s%s -> %d\n", host, command, statusCode);
+    }
+#endif
 
     return statusCode;
 }
@@ -175,10 +190,8 @@ bool SpotifyArduino::refreshAccessToken()
     char body[300];
     sprintf(body, refreshAccessTokensBody, _refreshToken, _clientId, _clientSecret);
 
-#ifdef SPOTIFY_DEBUG
-    Serial.println(body);
-    printStack();
-#endif
+    // spotKnob: the body holds the refresh token and the client secret.
+    // Upstream printed it here under SPOTIFY_DEBUG; it is never printed now.
 
     int statusCode = makePostRequest(SPOTIFY_TOKEN_ENDPOINT, NULL, body, "application/x-www-form-urlencoded", SPOTIFY_ACCOUNTS_HOST);
     if (statusCode > 0)
@@ -187,9 +200,9 @@ bool SpotifyArduino::refreshAccessToken()
     }
     unsigned long now = millis();
 
-#ifdef SPOTIFY_DEBUG
-    Serial.print("status Code");
-    Serial.println(statusCode);
+#ifdef SPOTIFY_SERIAL_OUTPUT
+    Serial.printf("Spotify: token refresh POST %s%s -> %d\n",
+                  SPOTIFY_ACCOUNTS_HOST, SPOTIFY_TOKEN_ENDPOINT, statusCode);
 #endif
 
     bool refreshed = false;
@@ -226,8 +239,9 @@ bool SpotifyArduino::refreshAccessToken()
             else
             {
 #ifdef SPOTIFY_SERIAL_OUTPUT
-                Serial.print(F("Problem with access_token (too long or null): "));
-                Serial.println(accessToken);
+                // spotKnob: report the length, never the token.
+                Serial.printf("Problem with access_token (too long or null): length %u\n",
+                              accessToken ? (unsigned)strlen(accessToken) : 0u);
 #endif
             }
         }
@@ -268,10 +282,7 @@ const char *SpotifyArduino::requestAccessTokens(const char *code, const char *re
 
     char body[500];
     sprintf(body, requestAccessTokensBody, code, redirectUrl, _clientId, _clientSecret);
-
-#ifdef SPOTIFY_DEBUG
-    Serial.println(body);
-#endif
+    // spotKnob: the body holds the auth code and the client secret; not printed.
 
     int statusCode = makePostRequest(SPOTIFY_TOKEN_ENDPOINT, NULL, body, "application/x-www-form-urlencoded", SPOTIFY_ACCOUNTS_HOST);
     if (statusCode > 0)
@@ -280,9 +291,9 @@ const char *SpotifyArduino::requestAccessTokens(const char *code, const char *re
     }
     unsigned long now = millis();
 
-#ifdef SPOTIFY_DEBUG
-    Serial.print("status Code");
-    Serial.println(statusCode);
+#ifdef SPOTIFY_SERIAL_OUTPUT
+    Serial.printf("Spotify: token request POST %s%s -> %d\n",
+                  SPOTIFY_ACCOUNTS_HOST, SPOTIFY_TOKEN_ENDPOINT, statusCode);
 #endif
 
     if (statusCode == 200)
@@ -482,7 +493,8 @@ bool SpotifyArduino::seek(int position, const char *deviceId)
 bool SpotifyArduino::transferPlayback(const char *deviceId, bool play)
 {
     char body[100];
-    sprintf(body, "{\"device_ids\":[\"%s\"],\"play\":\"%s\"}", deviceId, (play ? "true" : "false"));
+    // spotKnob: "play" is a JSON boolean. Upstream sent the string "true".
+    snprintf(body, sizeof(body), "{\"device_ids\":[\"%s\"],\"play\":%s}", deviceId, (play ? "true" : "false"));
 
 #ifdef SPOTIFY_DEBUG
     Serial.println(SPOTIFY_PLAYER_ENDPOINT);

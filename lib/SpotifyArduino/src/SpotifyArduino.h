@@ -26,7 +26,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 // NOTE: Do not use this option on live-streams, it will reveal your
 // private tokens!
 
-#define SPOTIFY_DEBUG 1
+// spotKnob: OFF. Upstream defined this unconditionally. Opt in with
+// -DSPOTIFY_DEBUG for bench work only. Token request bodies are never
+// printed, even with it on (see refreshAccessToken()).
+// #define SPOTIFY_DEBUG 1
 
 // Comment out if you want to disable any serial output from this library (also comment out DEBUG and PRINT_JSON_PARSE)
 #define SPOTIFY_SERIAL_OUTPUT 1

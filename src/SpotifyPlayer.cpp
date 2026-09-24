@@ -86,7 +86,8 @@ void SpotifyPlayer::initialize(QueueHandle_t    *pScuiQueue)
     spotify.lateInit(_spotifyClientId.c_str(), _spotifyClientSecret.c_str(), _spotifyRefreshToken.c_str());
 
     // client is defined in Core/spotify.h
-    client.setCACert(spotify_server_cert);  
+    // Both api.spotify.com and accounts.spotify.com; see the bundle's notes.
+    client.setCACert(spotify_api_root_certs);
     
 }
 
@@ -195,7 +196,9 @@ void SpotifyPlayer::login()
     // -> see SpotifyArduino.h#autoTokenRefresh and SpotifyArduino::checkAndRefreshAccessToken() (called before every API function)
     spotify.setRefreshToken(_spotifyRefreshToken.c_str());
     spotify.refreshAccessToken();
-    spLogI(LOGTAG_PLAYER, "Authentication against Spotify done. Refresh token: %s", _spotifyRefreshToken.c_str());    
+    // Never log the refresh token itself: it is a long-lived credential.
+    spLogI(LOGTAG_PLAYER, "Authentication against Spotify done. Refresh token length: %u",
+           (unsigned)_spotifyRefreshToken.length());
 }
 
 /*
@@ -419,6 +422,15 @@ void SpotifyPlayer::refreshCurrentTrack()
             spLogI(LOGTAG_MULTITASK,"Unable to take _xSemaphoreNetwork.");
         }
 
+
+        // One line per change of outcome, not per poll: enough to see a
+        // 204 (nothing playing) turn into a 200 without flooding the log.
+        static int lastLoggedStatus = 0;
+        if (status != lastLoggedStatus)
+        {
+            spLogI(LOGTAG_PLAYER, "NOWPLAYING currently-playing -> %d", status);
+            lastLoggedStatus = status;
+        }
 
         if (status == 200)
         {
