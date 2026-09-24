@@ -177,6 +177,9 @@ public:
     // CrowPanel port: filled circle, for the progress ring's endpoint dot.
     void fillCircleAt(int32_t x, int32_t y, int32_t r, TFTColor color);
 
+    // Filled rounded rectangle, for the device picker's selection pill.
+    void fillRoundRectAt(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, TFTColor color);
+
     // CrowPanel port: centered text with NO clearing rect. cDrawString clears
     // the full width of its row, which on the round UI stamps black gaps into
     // the perimeter ring wherever a text row crosses it, and would erase the

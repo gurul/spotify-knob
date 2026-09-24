@@ -22,6 +22,7 @@
 #include "HomeView.h"
 #include "DiagnosticsView.h"
 #include "ClockView.h"
+#include "DevicePickerView.h"
 
 /*
 ** ===================================================================
@@ -120,6 +121,12 @@ void UIViewManager::advanceView()
     // Determine the next view in the sequence
     ViewID nextView = static_cast<ViewID>((static_cast<uint8_t>(_currentViewID) + 1) % NUM_DISPLAY_MODES);
 
+    // The device picker is a modal step, not a display mode to cycle into.
+    if (nextView == ViewID::DevicePicker)
+    {
+        nextView = static_cast<ViewID>((static_cast<uint8_t>(nextView) + 1) % NUM_DISPLAY_MODES);
+    }
+
     // Switch to the next view
     setViewID(nextView);
 }
@@ -197,7 +204,8 @@ void UIViewManager::initializeViews(DisplayUI *pUI)
         std::make_unique<RoundNowPlayingView>(pUI),
         std::make_unique<CoverView>(pUI),
         std::make_unique<DiagnosticsView>(pUI),
-        std::make_unique<ClockView>(pUI)
+        std::make_unique<ClockView>(pUI),
+        std::make_unique<DevicePickerView>(pUI)
     };
 
     // Call initialize() on each view to ensure UI elements are properly set up

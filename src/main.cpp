@@ -688,9 +688,13 @@ void initBoard()
 **
 **    Maps the rotary encoder onto playback:
 **
-**      rotate      -> volume, 2% per detent
-**      press       -> play/pause toggle
-**      long press  -> re-seed volume from the active device
+**      rotate          -> volume, 2% per detent
+**      press           -> play/pause toggle
+**      long press      -> re-seed volume from the active device
+**      hold 1.5 s      -> open the playback-device picker
+**
+**    A view may take the knob first (UIView::onKnob). The device
+**    picker does, for as long as it is open.
 **
 **    Rotation only moves a local shadow here. The network write is
 **    debounced inside SpotifyPlayer, because a single flick of this
@@ -701,9 +705,25 @@ void handleKnobInput()
 {
     static constexpr int VOLUME_STEP_PCT = 2;
 
+    // True when a view consumed this hold's LongPress (the picker closing
+    // itself). The VeryLongPress of the same hold must then not reopen it.
+    static bool holdTakenByView = false;
+
     KnobEvent ev;
     while (knob.poll(ev))
     {
+        UIView *view = UIViewManager::getInstance().getActiveView();
+        const bool consumed = (view != nullptr) && view->onKnob(ev);
+
+        if (ev.type == KnobEventType::LongPress)
+        {
+            holdTakenByView = consumed;
+        }
+        if (consumed)
+        {
+            continue;
+        }
+
         switch (ev.type)
         {
             case KnobEventType::Rotate:
@@ -731,6 +751,14 @@ void handleKnobInput()
             case KnobEventType::LongPress:
                 spLogI(LOGTAG_INPUT, "KNOB longpress — reseeding volume");
                 spotifyPlayer.refreshVolumeFromDevice();
+                break;
+
+            case KnobEventType::VeryLongPress:
+                if (!holdTakenByView)
+                {
+                    spLogI(LOGTAG_INPUT, "KNOB very long press — opening the device picker");
+                    UIViewManager::getInstance().gotoView(UIViewManager::ViewID::DevicePicker);
+                }
                 break;
 
             default:

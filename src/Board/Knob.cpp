@@ -94,8 +94,9 @@ void Knob::pollSwitch() {
     _swDown       = down;
 
     if (down) {
-      _pressedAt = now;
-      _longFired = false;
+      _pressedAt     = now;
+      _longFired     = false;
+      _veryLongFired = false;
     }
   }
 }
@@ -128,6 +129,14 @@ bool Knob::poll(KnobEvent &out) {
     _longFired = true;
     out.type   = KnobEventType::LongPress;
     out.delta  = 0;
+    return true;
+  }
+
+  // Very long press fires once, later in the same hold.
+  if (_swDown && _longFired && !_veryLongFired && (now - _pressedAt) >= VERY_LONG_PRESS_MS) {
+    _veryLongFired = true;
+    out.type       = KnobEventType::VeryLongPress;
+    out.delta      = 0;
     return true;
   }
 

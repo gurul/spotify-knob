@@ -20,6 +20,9 @@
 #include "DisplayUI.h"
 #include "PlayingMetadata.h"
 #include "scui.h"
+
+class DevicePicker;
+
 class SpotifyPlayer {
 public:
     // Public method to access the singleton instance
@@ -63,6 +66,19 @@ public:
 
     /// Seeds the volume shadow from the active device. Safe to call repeatedly.
     void   refreshVolumeFromDevice();
+
+    // ---- playback-device switching ------------------------------------------
+
+    /// GET /v1/me/player/devices into picker (clears it first). Returns the
+    /// HTTP status: 200 on success, <= 0 for a connection or JSON failure.
+    /// On 401 the access token is refreshed and the request sent once more.
+    int    fetchDevices(DevicePicker &picker);
+
+    /// PUT /v1/me/player {"device_ids":[id],"play":true}. True on 204.
+    /// The library reports only success or failure here, so any failure
+    /// refreshes the access token and tries once more; that covers a 401.
+    /// The caller tells a vanished device (404) apart by re-listing.
+    bool   transferPlaybackTo(const char *deviceId);
 
     // status
     bool   isMusicAvailable();

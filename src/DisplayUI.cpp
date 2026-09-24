@@ -2027,6 +2027,20 @@ void DisplayUI::fillCircleAt(int32_t x, int32_t y, int32_t r, TFTColor color)
 }
 
 
+void DisplayUI::fillRoundRectAt(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r,
+                                TFTColor color)
+{
+    if (xSemaphoreTake(xSemaphoreDisplay, portMAX_DELAY))
+    {
+        _tft->fillRoundRect(x, y, w, h, r, toValue(color));
+        xSemaphoreGive(xSemaphoreDisplay);
+    }
+    else
+    {
+        spLogI(LOGTAG_MULTITASK, "Unable to take xSemaphoreDisplay in fillRoundRectAt().");
+    }
+}
+
 /*
 ** ===================================================================
 ** drawStringNoClear()  — CrowPanel port addition

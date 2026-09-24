@@ -22,7 +22,9 @@ enum class KnobEventType : uint8_t {
   None,
   Rotate,     ///< delta carries the signed detent count
   Press,      ///< short press, emitted on release
-  LongPress,  ///< emitted once, while still held
+  LongPress,      ///< emitted once, while still held
+  VeryLongPress,  ///< emitted once, still held past VERY_LONG_PRESS_MS; always
+                  ///< follows a LongPress in the same hold
 };
 
 struct KnobEvent {
@@ -46,7 +48,8 @@ private:
   static void IRAM_ATTR isrChannelA();
   void pollSwitch();
 
-  static constexpr uint32_t LONG_PRESS_MS   = 600;
+  static constexpr uint32_t LONG_PRESS_MS      = 600;
+  static constexpr uint32_t VERY_LONG_PRESS_MS = 1500;
   static constexpr uint32_t SW_DEBOUNCE_MS  = 30;
   static constexpr uint32_t SW_POLL_MS      = 20;
 
@@ -55,6 +58,7 @@ private:
   uint32_t _lastSwChange  = 0;
   bool     _swDown        = false;
   bool     _longFired     = false;
+  bool     _veryLongFired = false;
   int32_t  _reported      = 0;
 };
 

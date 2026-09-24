@@ -47,7 +47,9 @@ public:
         Home,        // Show Song, Album, and Artist(s) over cover art
         Cover,       // Show only the cover art
         Diagnostics, // System Stats
-        Clock        // Clock View
+        Clock,       // Clock View
+        DevicePicker // Playback-device picker; opened by a very long knob hold,
+                     // never part of the advanceView() cycle
     };
 
     // Returns the singleton instance of UIViewManager
@@ -59,6 +61,9 @@ public:
 
     // Retrieves the current display mode
     UIView *getActiveView() const;
+
+    // Retrieves the ID of the current display mode
+    ViewID getActiveViewID() const { return _currentViewID; }
 
     // Sets the current display mode
     void setViewID(ViewID id);
@@ -82,7 +87,7 @@ private:
     void initializeViews(DisplayUI *pUI);
 
     // Number of display modes (static constexpr to avoid compile errors)
-    static constexpr uint8_t NUM_DISPLAY_MODES = static_cast<uint8_t>(ViewID::Clock) + 1;
+    static constexpr uint8_t NUM_DISPLAY_MODES = static_cast<uint8_t>(ViewID::DevicePicker) + 1;
 
     std::array<std::unique_ptr<UIView>, NUM_DISPLAY_MODES> _views; // List of all display modes
     UIView *             _pCurrentView   = nullptr;                // Active display mode

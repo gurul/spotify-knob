@@ -106,6 +106,7 @@ automatically.
 pio run -e crowpanel-21-rotary                  # build
 pio run -e crowpanel-21-rotary -t uploadfs      # filesystem: credentials + art cache
 pio run -e crowpanel-21-rotary -t upload        # firmware
+pio test -e native                              # host unit tests (no board needed)
 ```
 
 Run `uploadfs` and `upload` as **separate** commands. Combining targets in one
@@ -236,13 +237,47 @@ refresh, plus any request that did not return 2xx.
 |---|---|
 | Rotate knob | Volume, 2% per detent |
 | Press knob | Play / pause |
-| Hold knob | Re-read volume from the active device |
+| Hold knob (0.6 s) | Re-read volume from the active device |
+| Keep holding (1.5 s) | Open the **device picker** |
 | Swipe left / right | Next / previous track |
 | Tap | View-specific |
 
 Rotation moves a local shadow immediately and pushes to Spotify on a **400 ms
 debounce**. One API write per detent gets the account rate-limited within a
 single flick of the knob.
+
+### Choosing where the music plays
+
+Hold the knob for 1.5 s from any screen. The volume re-read at 0.6 s still
+happens on the way, which does no harm. The picker lists your Spotify Connect
+devices (`GET /v1/me/player/devices`). Each row shows the name and the kind
+of device, and the device that is playing now has a green dot.
+
+| In the picker | Action |
+|---|---|
+| Rotate knob | Move the selection |
+| Press knob | Play on the selected device (`PUT /v1/me/player`, `play: true`) |
+| Hold knob, or tap the glass | Back out, nothing changed |
+| No input for 10 s | Back out, nothing changed |
+
+- The selection starts on the device that is playing now, so a press with no
+  turn changes nothing.
+- A device marked **no remote control** is one Spotify flags `is_restricted`.
+  It is listed but cannot be picked, because the Web API refuses to command it.
+- **No devices found** means Spotify has no device online for the account.
+  Open Spotify on a phone, computer or speaker, then hold the knob again.
+- If a switch fails, the picker reloads the list. A device that has vanished
+  (the API's `404`) shows as **no longer available**. Any other failure shows
+  as **Couldn't switch**. Either way you return to the fresh list.
+- An expired access token (`401`) is refreshed and the request is retried
+  once. That applies to both the list and the switch.
+- After a switch the volume shadow is re-read from the new device, and the
+  now-playing screen returns and keeps updating as before.
+
+This needs both OAuth scopes that `tools/get_refresh_token.py` already
+requests: `user-read-playback-state` to list devices and
+`user-modify-playback-state` to switch. A refresh token minted without them
+cannot list or switch devices. Re-run the script and `uploadfs`.
 
 ## Debugging
 
@@ -284,12 +319,17 @@ src/
     Touch.{h,cpp}     CST8xx, reset over the expander, gesture recognition
     Knob.{h,cpp}      encoder by interrupt; switch polled over I2C
     TFTCompat.h       TFT_eSPI-shaped facade over Arduino_GFX
-  Core/             connectivity, time sync, and shared utilities
+  Core/             connectivity, time sync, shared utilities, API root CAs
+  DevicePicker.*    device-picker state; no Arduino code, host-tested
   DisplayUI.*       view rendering — draws through TFTCompat
-  UIViews/          the views and their renderers
+  UIViews/          the views and their renderers (DevicePickerView draws the picker)
   SpotifyPlayer.*   playback state, volume, and the API client
   SpotifyArtMgr.*   album-art download and cache, pinned root CAs
   Vault.*           credential loading
+lib/
+  SpotifyArduino/        vendored Web API client, debug output off
+test/
+  test_device_picker/    host tests: `pio test -e native`
 tools/
   get_refresh_token.py   host-side OAuth
 GATES.md            acceptance ledger: what is proven, and by what evidence

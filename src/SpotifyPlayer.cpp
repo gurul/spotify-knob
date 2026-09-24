@@ -26,6 +26,7 @@
 #include "Monitor.h"
 #include "SpotifyArtMgr.h"
 #include "SCFileIO.h"
+#include "DevicePicker.h"
 
 #include <TJpg_Decoder.h> // Ensure you include the required decoder library
 
@@ -983,4 +984,94 @@ void SpotifyPlayer::commitPendingVolume()
                                         : TFTColor::SC_NetworkFailure));
 
     spLogI(LOGTAG_PLAYER, "VOLUME set=%d (%s)", target, ok ? "ok" : "FAILED");
+}
+
+/*
+** ===================================================================
+** Playback-device switching
+**
+**    Both calls block, like togglePlayPause(). They run on the UI task
+**    and hold _xSemaphoreNetwork, so they never overlap the background
+**    now-playing poll, which carries on unchanged after a switch.
+** ===================================================================
+*/
+
+namespace {
+
+// getDevices() takes a plain function pointer, so the target picker is
+// passed through this pointer. Set and cleared under _xSemaphoreNetwork.
+DevicePicker *g_deviceSink = nullptr;
+
+bool collectDevice(SpotifyDevice device, int /*index*/, int /*numDevices*/)
+{
+    if (g_deviceSink != nullptr)
+    {
+        g_deviceSink->addDevice(device.id, device.name, device.type,
+                                device.isActive, device.isRestricted);
+    }
+    return true;  // keep going; addDevice() drops what does not fit
+}
+
+}  // namespace
+
+int SpotifyPlayer::fetchDevices(DevicePicker &picker)
+{
+    int status = -777;
+
+    for (int attempt = 0; attempt < 2; attempt++)
+    {
+        if (!xSemaphoreTake(_xSemaphoreNetwork, portMAX_DELAY))
+        {
+            spLogI(LOGTAG_MULTITASK, "Unable to take _xSemaphoreNetwork.");
+            break;
+        }
+
+        client.stop();  // start from a clean TLS session; see refreshCurrentTrack()
+        picker.clearDevices();
+        g_deviceSink = &picker;
+        status = spotify.getDevices(collectDevice);
+        g_deviceSink = nullptr;
+
+        const bool retry = (status == 401 && attempt == 0);
+        if (retry)
+        {
+            spLogW(LOGTAG_PLAYER, "DEVICES 401 - refreshing the access token and retrying");
+            spotify.refreshAccessToken();
+        }
+        xSemaphoreGive(_xSemaphoreNetwork);
+
+        if (!retry)
+        {
+            break;
+        }
+    }
+
+    spLogI(LOGTAG_PLAYER, "DEVICES status=%d count=%u", status, (unsigned)picker.count());
+    return status;
+}
+
+bool SpotifyPlayer::transferPlaybackTo(const char *deviceId)
+{
+    bool ok = false;
+    for (int attempt = 0; attempt < 2 && !ok; attempt++)
+    {
+        if (!xSemaphoreTake(_xSemaphoreNetwork, portMAX_DELAY))
+        {
+            spLogI(LOGTAG_MULTITASK, "Unable to take _xSemaphoreNetwork.");
+            break;
+        }
+
+        client.stop();
+        ok = spotify.transferPlayback(deviceId, true);
+
+        if (!ok && attempt == 0)
+        {
+            spLogW(LOGTAG_PLAYER, "TRANSFER failed - refreshing the access token and retrying");
+            spotify.refreshAccessToken();
+        }
+        xSemaphoreGive(_xSemaphoreNetwork);
+    }
+
+    spLogI(LOGTAG_PLAYER, "TRANSFER -> %s (%s)", deviceId, ok ? "ok" : "FAILED");
+    return ok;
 }

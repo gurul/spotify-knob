@@ -22,6 +22,7 @@
 // the original board’s controller and is not built here — this board has a
 // CST8xx, and both drivers would contend on the same I2C bus.
 #include "Board/Touch.h"
+#include "Board/Knob.h"
 #include "SpotifyPlayer.h"
 #include "UIElement.h"
 
@@ -53,6 +54,10 @@ public:
     // ===================================================================
     virtual void onTouchDown(const TS_Point& point);
     virtual void onTouchUp();
+
+    // Knob input. Return true to consume the event; false (the default)
+    // lets main.cpp apply the global knob mapping (volume, play/pause, ...).
+    virtual bool onKnob(const KnobEvent & /*event*/) { return false; }
 
     // ===================================================================
     void initialize();
