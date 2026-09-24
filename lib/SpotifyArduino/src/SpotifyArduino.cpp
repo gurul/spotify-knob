@@ -923,7 +923,7 @@ int SpotifyArduino::getDevices(processDevices devicesCallback)
             Serial.print(F("deserializeJson() failed with code "));
             Serial.println(error.c_str());
 #endif
-            statusCode = -1;
+            statusCode = -2;   // a 200 whose JSON did not parse: distinct from -1, no connection
         }
     }
 

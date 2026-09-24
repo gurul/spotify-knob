@@ -58,6 +58,7 @@ private:
     void close();
 
     DevicePicker _picker;
+    int          _lastStatus = 0;   // HTTP status of the last device fetch (-1 = no connection, -777 = never ran)
     bool         _networkDue    = false;  // the announcing screen is up; run the call
     uint32_t     _lastPaintMs   = 0;
 };

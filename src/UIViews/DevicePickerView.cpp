@@ -175,6 +175,7 @@ void DevicePickerView::handle_UM_PLAYER_REFRESH(SCUIMessage * /*pMessage*/) {}
 void DevicePickerView::loadDevices()
 {
     const int status = _spotifyPlayer.fetchDevices(_picker);
+    _lastStatus = status;
     _picker.finishLoad(status == 200, millis());
 }
 
@@ -304,7 +305,13 @@ void DevicePickerView::paint()
             paintMessage("No devices found", "Open Spotify on a phone or speaker");
             break;
         case DevicePicker::State::LoadError:
-            paintMessage("Couldn't load devices", "Check Wi-Fi, then try again");
+        {
+            // The code on screen is what diagnoses it: -1 no connection, -2 a reply that did not parse,
+            // 401 login, 429 rate limit, 5xx Spotify.
+            char detail[48];
+            snprintf(detail, sizeof(detail), "Code %d. Hold to go back", _lastStatus);
+            paintMessage("Couldn't load devices", detail);
+        }
             break;
         case DevicePicker::State::Refused:
             paintMessage(name, "can't be controlled from here");
