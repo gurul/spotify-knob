@@ -53,12 +53,11 @@ private:
     void paintList();
     void paintMessage(const char *line1, const char *line2);
     void clearBody();
-    void loadDevices();
-    void transfer();
     void close();
 
     DevicePicker _picker;
     int          _lastStatus = 0;   // HTTP status of the last device fetch (-1 = no connection, -777 = never ran)
-    bool         _networkDue    = false;  // the announcing screen is up; run the call
+    bool         _networkDue    = false;  // the announcing screen is up; post the job
+    bool         _jobPending    = false;  // a job is with SongRefresh; collect it on the idle tick
     uint32_t     _lastPaintMs   = 0;
 };

@@ -29,6 +29,8 @@
 #include "DevicePicker.h"
 
 #include <TJpg_Decoder.h> // Ensure you include the required decoder library
+#include <netdb.h>          // getaddrinfo: the DNS step NetworkClientSecure::connect() runs first
+#include "esp_heap_caps.h"
 
 // Spotify related
 #define SP_SPOTIFY_MARKET         "IE"
@@ -820,6 +822,7 @@ void SpotifyPlayer::refreshCurrentSongTask(void *pvParameters)
             player._volumeRefreshRequested = false;
             player.refreshVolumeFromDevice();
         }
+        player.serveDeviceJob();
     };
     // Waits in short slices so a request is served within ~100 ms of asking.
     auto waitServing = [&serveRequests](uint32_t ms) {
@@ -1036,6 +1039,23 @@ int SpotifyPlayer::fetchDevices(DevicePicker &picker)
 {
     int status = -777;
 
+    // Diagnostic (2026-09-23): the device fetch failed with -1 and no TLS error. In arduino-esp32
+    // 3.3.11, NetworkClientSecure::connect(host, port) returns 0 without logging only when
+    // Network.hostByName() fails, i.e. the DNS lookup (lwip_getaddrinfo). Log that lookup's own
+    // result, its time, the calling task and its stack headroom, so the cause is read, not guessed.
+    {
+        struct addrinfo hints = {};
+        hints.ai_socktype = SOCK_STREAM;
+        struct addrinfo *res = nullptr;
+        const uint32_t t0 = millis();
+        const int err = getaddrinfo("api.spotify.com", "443", &hints, &res);
+        spLogI(LOGTAG_PLAYER, "DEVICES dns: err=%d in %lu ms, task=%s, stack free=%u B, heap free=%u B, largest block=%u B",
+               err, (unsigned long)(millis() - t0), pcTaskGetName(nullptr),
+               (unsigned)(uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t)),
+               (unsigned)ESP.getFreeHeap(), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+        if (res) freeaddrinfo(res);
+    }
+
     for (int attempt = 0; attempt < 2; attempt++)
     {
         if (!xSemaphoreTake(_xSemaphoreNetwork, portMAX_DELAY))
@@ -1092,4 +1112,91 @@ bool SpotifyPlayer::transferPlaybackTo(const char *deviceId)
 
     spLogI(LOGTAG_PLAYER, "TRANSFER -> %s (%s)", deviceId, ok ? "ok" : "FAILED");
     return ok;
+}
+
+/*
+** ===================================================================
+** Picker job slot
+**
+**    The device picker's calls run here, on SongRefresh, never on the UI
+**    task. On 2026-09-23 the device GET from UIHandler connected and sent
+**    its request, then read no status line within SPOTIFY_TIMEOUT, while
+**    the same code on SongRefresh returned 200. Running every Spotify call
+**    on one task also means the UI task never blocks on the network.
+** ===================================================================
+*/
+
+bool SpotifyPlayer::requestDeviceList()
+{
+    uint8_t idle = JOB_NONE;
+    if (_jobDone.load(std::memory_order_acquire)) return false;
+    return _job.compare_exchange_strong(idle, JOB_LIST, std::memory_order_acq_rel);
+}
+
+bool SpotifyPlayer::requestTransfer(const char *deviceId)
+{
+    if (_jobDone.load(std::memory_order_acquire) || _job.load(std::memory_order_acquire) != JOB_NONE) return false;
+    strlcpy(_jobTarget, deviceId ? deviceId : "", sizeof(_jobTarget));
+    uint8_t idle = JOB_NONE;
+    return _job.compare_exchange_strong(idle, JOB_TRANSFER, std::memory_order_acq_rel);
+}
+
+void SpotifyPlayer::serveDeviceJob()
+{
+    const uint8_t job = _job.load(std::memory_order_acquire);
+    if (job == JOB_NONE || _jobDone.load(std::memory_order_acquire)) return;
+
+    if (job == JOB_LIST)
+    {
+        _jobStatus = fetchDevices(_jobDevices);
+        _jobOk = (_jobStatus == 200);
+        _jobStillListed = true;
+    }
+    else
+    {
+        _jobOk = transferPlaybackTo(_jobTarget);
+        _jobStillListed = true;
+        if (_jobOk)
+        {
+            // Volume lives on the device, so the shadow belongs to the old one.
+            refreshVolumeFromDevice();
+        }
+        else
+        {
+            // Re-list: a device that is gone explains the failure (the API's
+            // 404), and the list the owner returns to is then current.
+            _jobStatus = fetchDevices(_jobDevices);
+            _jobStillListed = (_jobStatus != 200) || _jobDevices.contains(_jobTarget);
+        }
+    }
+    _jobDone.store(true, std::memory_order_release);
+}
+
+bool SpotifyPlayer::takeDeviceJob(DevicePicker &into, int &status, bool &transferOk, bool &stillListed)
+{
+    if (!_jobDone.load(std::memory_order_acquire)) return false;
+
+    into.clearDevices();
+    for (size_t i = 0; i < _jobDevices.count(); i++)
+    {
+        const PickerDevice *d = _jobDevices.device(i);
+        into.addDevice(d->id, d->name, d->type, d->isActive, d->isRestricted);
+    }
+    status      = _jobStatus;
+    transferOk  = _jobOk;
+    stillListed = _jobStillListed;
+
+    _job.store(JOB_NONE, std::memory_order_release);
+    _jobDone.store(false, std::memory_order_release);
+    return true;
+}
+
+void SpotifyPlayer::discardDeviceJob()
+{
+    // A job still running finishes and is dropped by the next take; a finished one is dropped now.
+    if (_jobDone.load(std::memory_order_acquire))
+    {
+        _job.store(JOB_NONE, std::memory_order_release);
+        _jobDone.store(false, std::memory_order_release);
+    }
 }

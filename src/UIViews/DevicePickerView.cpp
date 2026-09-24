@@ -58,6 +58,8 @@ void DevicePickerView::enteringView()
 {
     spLogI(LOGTAG_INPUT, "DEVICES picker open");
     _networkDue  = false;
+    _jobPending  = false;
+    _spotifyPlayer.discardDeviceJob();
     _lastPaintMs = 0;
     _picker.open(millis());
 
@@ -131,16 +133,39 @@ void DevicePickerView::handle_UM_IDLE(SCUIMessage * /*pMessage*/)
 
     if (_networkDue)
     {
-        _networkDue = false;
-        if (_picker.state() == DevicePicker::State::Loading)
+        // Post the job; SongRefresh runs it. A refused request (a job still in
+        // flight) is retried on the next tick.
+        const DevicePicker::State st = _picker.state();
+        _spotifyPlayer.discardDeviceJob();   // nothing is pending here, so a finished result is stale
+        const bool posted =
+            (st == DevicePicker::State::Loading)   ? _spotifyPlayer.requestDeviceList() :
+            (st == DevicePicker::State::Switching) ? _spotifyPlayer.requestTransfer(_picker.targetId()) :
+                                                     true;
+        if (posted)
         {
-            loadDevices();
-        }
-        else if (_picker.state() == DevicePicker::State::Switching)
-        {
-            transfer();
+            _networkDue = false;
+            _jobPending = (st == DevicePicker::State::Loading || st == DevicePicker::State::Switching);
         }
         return;
+    }
+
+    if (_jobPending)
+    {
+        int  status = 0;
+        bool ok = false, stillListed = true;
+        if (_spotifyPlayer.takeDeviceJob(_picker, status, ok, stillListed))
+        {
+            _jobPending = false;
+            _lastStatus = status;
+            if (_picker.state() == DevicePicker::State::Loading)
+            {
+                _picker.finishLoad(status == 200, now);
+            }
+            else if (_picker.state() == DevicePicker::State::Switching)
+            {
+                _picker.finishTransfer(ok, stillListed, now);
+            }
+        }
     }
 
     if ((now - _lastPaintMs) >= PAINT_MS && _picker.consumeDirty())
@@ -172,40 +197,11 @@ void DevicePickerView::handle_UM_PLAYER_REFRESH(SCUIMessage * /*pMessage*/) {}
 ** ===================================================================
 */
 
-void DevicePickerView::loadDevices()
-{
-    const int status = _spotifyPlayer.fetchDevices(_picker);
-    _lastStatus = status;
-    _picker.finishLoad(status == 200, millis());
-}
-
-void DevicePickerView::transfer()
-{
-    char targetId[sizeof(PickerDevice::id)];
-    strlcpy(targetId, _picker.targetId(), sizeof(targetId));
-
-    bool ok = _spotifyPlayer.transferPlaybackTo(targetId);
-    bool stillListed = true;
-
-    if (ok)
-    {
-        // Volume lives on the device, so the shadow belongs to the old one.
-        _spotifyPlayer.refreshVolumeFromDevice();
-    }
-    else
-    {
-        // Re-list: a device that is gone explains the failure (the API's
-        // 404), and the list the owner returns to is then current.
-        const int status = _spotifyPlayer.fetchDevices(_picker);
-        stillListed = (status != 200) || _picker.contains(targetId);
-    }
-
-    _picker.finishTransfer(ok, stillListed, millis());
-}
-
 void DevicePickerView::close()
 {
     _networkDue = false;
+    _jobPending = false;
+    _spotifyPlayer.discardDeviceJob();
     _picker.cancel();
     if (!UIViewManager::getInstance().exitView())
     {

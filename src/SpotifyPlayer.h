@@ -17,11 +17,12 @@
 #pragma once
 
 #include <Arduino.h>
+#include <atomic>
 #include "DisplayUI.h"
 #include "PlayingMetadata.h"
 #include "scui.h"
 
-class DevicePicker;
+#include "DevicePicker.h"   // a full type: the job slot holds one by value
 
 class SpotifyPlayer {
 public:
@@ -85,6 +86,19 @@ public:
     /// The caller tells a vanished device (404) apart by re-listing.
     bool   transferPlaybackTo(const char *deviceId);
 
+    /// The picker's network work, run on the SongRefresh task (the task every
+    /// working Spotify call already runs on) instead of the UI task. Measured
+    /// 2026-09-23: the same GET that returns 200 from SongRefresh got no status
+    /// line within SPOTIFY_TIMEOUT from UIHandler. One job at a time; a request
+    /// while one is in flight is refused (returns false).
+    bool   requestDeviceList();
+    bool   requestTransfer(const char *deviceId);
+    /// True once the job has finished; then copies its device list into `into`
+    /// (cleared first) and reports status / transfer result. Clears the slot.
+    bool   takeDeviceJob(DevicePicker &into, int &status, bool &transferOk, bool &stillListed);
+    /// Drops a finished or pending result nobody will read (the picker closed).
+    void   discardDeviceJob();
+
     // status
     bool   isMusicAvailable();
 
@@ -94,6 +108,17 @@ public:
     const bool   isNewTrackReady();
 
 private:
+    // ---- picker job slot (served by refreshCurrentSongTask) -----------------
+    enum : uint8_t { JOB_NONE = 0, JOB_LIST = 1, JOB_TRANSFER = 2 };
+    std::atomic<uint8_t> _job{JOB_NONE};       // set by UIHandler, cleared by SongRefresh when done
+    std::atomic<bool>    _jobDone{false};      // published by SongRefresh after the result is complete
+    DevicePicker         _jobDevices;          // written only by SongRefresh while a job runs
+    char                 _jobTarget[48] = {0};
+    int                  _jobStatus = 0;
+    bool                 _jobOk = false;
+    bool                 _jobStillListed = true;
+    void                 serveDeviceJob();
+
     // Member variables
     String              _spotifyRefreshToken   = "";
     QueueHandle_t       *_pScuiQueue; 
