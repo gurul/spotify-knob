@@ -156,6 +156,11 @@ timezone = PST8PDT,M3.2.0,M11.1.0
 ui_date_time_format = us
 ```
 
+To store these encrypted instead of in plain text, build once with
+`-DSPOTKNOB_PRINT_VAULT_HINTS` in `build_flags`: the board then prints the encrypted
+values for `user.ini` on the serial line at boot. It is off by default because those
+values are your secrets, and privacy level 1's key is in this source.
+
 **3. Get a refresh token**, then upload the filesystem:
 
 ```bash

@@ -244,10 +244,16 @@ void Vault::initialize()
 
     file.close();
 
+#ifdef SPOTKNOB_PRINT_VAULT_HINTS
+    // Off by default (2026-09-23): the hints are the owner's Wi-Fi and Spotify secrets,
+    // encrypted, and privacy level 1's key ships in this source, so printing them at every
+    // boot put decryptable secrets on the USB serial line. Build with
+    // -DSPOTKNOB_PRINT_VAULT_HINTS once, when you want the values for user.ini.
     if (_privacyLevel == VaultPrivacyLevel::None)
     {
         printEncryptionHints();
     }
+#endif
 
     spLogI(LOGTAG_VAULT, "Initialization complete. Privacy Level: %s. _useHardcodedValues: %s", toString(_privacyLevel), _useHardcodedValues ? "true" : "false");
 

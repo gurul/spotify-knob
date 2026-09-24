@@ -29,8 +29,6 @@
 #include "DevicePicker.h"
 
 #include <TJpg_Decoder.h> // Ensure you include the required decoder library
-#include <netdb.h>          // getaddrinfo: the DNS step NetworkClientSecure::connect() runs first
-#include "esp_heap_caps.h"
 
 // Spotify related
 #define SP_SPOTIFY_MARKET         "IE"
@@ -1039,22 +1037,6 @@ int SpotifyPlayer::fetchDevices(DevicePicker &picker)
 {
     int status = -777;
 
-    // Diagnostic (2026-09-23): the device fetch failed with -1 and no TLS error. In arduino-esp32
-    // 3.3.11, NetworkClientSecure::connect(host, port) returns 0 without logging only when
-    // Network.hostByName() fails, i.e. the DNS lookup (lwip_getaddrinfo). Log that lookup's own
-    // result, its time, the calling task and its stack headroom, so the cause is read, not guessed.
-    {
-        struct addrinfo hints = {};
-        hints.ai_socktype = SOCK_STREAM;
-        struct addrinfo *res = nullptr;
-        const uint32_t t0 = millis();
-        const int err = getaddrinfo("api.spotify.com", "443", &hints, &res);
-        spLogI(LOGTAG_PLAYER, "DEVICES dns: err=%d in %lu ms, task=%s, stack free=%u B, heap free=%u B, largest block=%u B",
-               err, (unsigned long)(millis() - t0), pcTaskGetName(nullptr),
-               (unsigned)(uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t)),
-               (unsigned)ESP.getFreeHeap(), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
-        if (res) freeaddrinfo(res);
-    }
 
     for (int attempt = 0; attempt < 2; attempt++)
     {
